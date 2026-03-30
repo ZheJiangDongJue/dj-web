@@ -1,0 +1,66 @@
+.root { position: relative; display: inline-block; }
+.btn { cursor: pointer; user-select: none; }
+.panel {
+  /* 默认作为相对定位的下拉；Portal 模式下由行内样式覆盖为 fixed */
+  position: absolute;
+  right: 0;
+  margin-top: 0.75rem;
+  min-width: clamp(20rem, 30vw, 26rem);
+  z-index: 50;
+  opacity: 0;
+  transform: translateY(-6px) scale(0.98);
+  transition: opacity .16s ease, transform .18s ease;
+}
+.panel[data-open="true"] {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+.card { /* 仅为结构化样式，视觉由 .t-card 提供 */
+  padding: var(--space-3);
+  border-radius: var(--radius-lg);
+}
+
+/* Portal 覆盖层，用于承载面板并接收外部点击关闭 */
+.layer {
+  position: fixed;
+  inset: 0;
+  z-index: 1000; /* 高于页面其他内容 */
+}
+
+.header { display: grid; gap: 4px; margin-bottom: var(--space-3); }
+.title { font-weight: 700; font-size: 0.95rem; }
+.subtitle { font-size: 12px; opacity: 0.85; }
+
+.list { display: grid; gap: var(--space-3); max-height: 60vh; overflow: auto; padding-inline: var(--space-3); }
+.option {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 0.75rem 0.625rem;
+  border-radius: var(--radius-md);
+  min-height: 44px;
+  cursor: pointer;
+  transition: background .15s ease, outline-color .15s ease, filter .15s ease;
+}
+.option:hover { filter: brightness(1.03); }
+.option[aria-selected="true"] { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--color-accent) 55%, transparent); background: color-mix(in srgb, var(--color-surface) 94%, var(--color-accent) 6%); }
+
+.swatch { display: flex; gap: 6px; }
+.dot { width: 18px; height: 18px; border-radius: 6px; box-shadow: inset 0 0 0 1px var(--color-border); }
+.label { font-weight: 700; font-size: 0.95rem; }
+.desc { font-size: 0.8rem; opacity: 0.8; line-height: 1.25; }
+
+.footer { display: flex; justify-content: space-between; align-items: center; font-size: 12px; opacity: 0.8; margin-top: var(--space-3); padding-top: var(--space-2); border-top: 1px solid var(--color-border); }
+.kbd { display: none; }
+
+.density { display: inline-flex; align-items: center; gap: 8px; }
+.seg { display: inline-flex; border: 1px solid var(--color-border); border-radius: 999px; overflow: hidden; background: color-mix(in srgb, var(--color-surface) 94%, var(--color-fg) 6%); }
+.segBtn { appearance: none; border: none; background: transparent; padding: 4px 10px; cursor: pointer; font-size: 12px; line-height: 1; }
+.segBtnSelected { background: color-mix(in srgb, var(--color-accent) 16%, transparent); }
+
+/* 密度驱动：compact 下整体更紧凑 */
+:global([data-density='compact']) .list { gap: var(--space-2); }
+:global([data-density='compact']) .option { min-height: 36px; padding: 0.5rem 0.5rem; gap: var(--space-2); }
+:global([data-density='compact']) .dot { width: 14px; height: 14px; border-radius: 4px; }
+:global([data-density='compact']) .panel { min-width: clamp(18rem, 28vw, 22rem); }

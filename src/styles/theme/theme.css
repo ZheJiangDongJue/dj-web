@@ -1,0 +1,192 @@
+/* 主题：颜色、圆角、阴影等“颜值因素” */
+
+/* 默认/浅色主题 */
+:root:not([data-theme]),
+:root[data-theme='light'] {
+  --color-bg: #ffffff;
+  --color-fg: #0a0a0a;
+  --color-surface: #f7f9fc;
+  --color-border: rgba(0,0,0,0.08);
+  /* Skeleton 颜色（可按需与其它主题不同权重） */
+  --color-skeleton: color-mix(in srgb, var(--color-surface) 88%, var(--color-fg) 12%);
+  --gradient-bg: linear-gradient(135deg,
+    #4a5568 0%,
+    #718096 50%,
+    #a0aec0 100%);
+
+  /* 语义前景色：为浅色主题补齐成功/错误色（与暗色主题变量对齐） */
+  --color-success-fg: #16a34a; /* emerald-600 */
+  --color-error-fg: #dc2626;   /* red-600 */
+}
+
+/* 深色主题 */
+:root[data-theme='dark'] {
+  --color-bg: #0b0f17;
+  --color-fg: #e6eaf2;
+  --color-surface: #121826;
+  --color-border: rgba(255,255,255,0.12);
+  --color-accent: #3b82f6; /* 略亮以提升可读性 */
+  /* 字段表面层：比卡片略亮，提升可读性与层次 */
+  --color-surface-field: color-mix(in srgb, var(--color-surface) 84%, #ffffff 16%);
+  --color-skeleton: color-mix(in srgb, var(--color-surface) 86%, var(--color-fg) 14%);
+
+  /* 暗色主题渐变背景 - 深邃的蓝紫色系 */
+  --gradient-bg: linear-gradient(135deg,
+    #1a1c3d 0%,
+    #2d1b69 25%,
+    #0f3460 50%,
+    #16213e 75%,
+    #1a1c3d 100%);
+
+  --color-info-bg: #0b1620;    /* 深色蓝调背景 */
+  --color-info-fg: #93c5fd;    /* sky-300 */
+  --color-success-bg: #0b2018; /* 深色绿调背景 */
+  --color-success-fg: #86efac; /* emerald-300 */
+  --color-warning-bg: #211a0a; /* 深色黄调背景 */
+  --color-warning-fg: #fde68a; /* amber-300 */
+  --color-error-bg: #200c12;   /* 深色红调背景 */
+  --color-error-fg: #fecaca;   /* rose-300 */
+}
+
+/* 其它主题：可按需扩展，遵循仅影响颜色/圆角/阴影的原则 */
+
+/* 海洋主题（ocean）：偏蓝青 */
+:root[data-theme='ocean'] {
+  --color-bg: #071a24;
+  --color-fg: #e6f3ff;
+  --color-surface: #0d2633;
+  --color-border: rgba(173, 216, 230, 0.25);
+  --color-accent: #00bcd4;
+  --color-skeleton: color-mix(in srgb, var(--color-surface) 88%, var(--color-fg) 12%);
+
+  --color-info-bg: #0a2430;
+  --color-info-fg: #7dd3fc;
+  --color-success-bg: #0b201f;
+  --color-success-fg: #99f6e4;
+  --color-warning-bg: #1f1a0b;
+  --color-warning-fg: #fde68a;
+  --color-error-bg: #200c12;
+  --color-error-fg: #fecaca;
+}
+
+/* 森林主题（forest）：偏绿色 */
+:root[data-theme='forest'] {
+  --color-bg: #0b1610;
+  --color-fg: #e9f8ef;
+  --color-surface: #0f1f17;
+  --color-border: rgba(186, 230, 201, 0.22);
+  --color-accent: #22c55e;
+  --color-skeleton: color-mix(in srgb, var(--color-surface) 88%, var(--color-fg) 12%);
+
+  --color-info-bg: #0b1620;
+  --color-info-fg: #93c5fd;
+  --color-success-bg: #0b2018;
+  --color-success-fg: #86efac;
+  --color-warning-bg: #211a0a;
+  --color-warning-fg: #fde68a;
+  --color-error-bg: #200c12;
+  --color-error-fg: #fecaca;
+}
+
+/* 玫瑰主题（rose）：偏粉红 */
+:root[data-theme='rose'] {
+  --color-bg: #1b0b12;
+  --color-fg: #ffe6ee;
+  --color-surface: #240f19;
+  --color-border: rgba(255, 182, 193, 0.25);
+  --color-accent: #fb7185;
+  --color-skeleton: color-mix(in srgb, var(--color-surface) 88%, var(--color-fg) 12%);
+
+  --color-info-bg: #0b1620;
+  --color-info-fg: #93c5fd;
+  --color-success-bg: #0b2018;
+  --color-success-fg: #86efac;
+  --color-warning-bg: #211a0a;
+  --color-warning-fg: #fde68a;
+  --color-error-bg: #2a0e19;
+  --color-error-fg: #fecdd3;
+}
+
+/* 主题组件示例：卡片 */
+.t-card {
+  background: var(--color-surface);
+  color: var(--color-fg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-1);
+}
+
+/* 强调色示例（视项目需要扩展） */
+.t-accent {
+  --_accent: var(--color-accent);
+  color: #fff;
+  background: var(--_accent);
+  /* 让按钮尺寸随密度变量变化，覆盖 Tailwind 高度类 */
+  height: var(--control-h);
+  min-height: var(--control-h);
+  padding-inline: var(--control-px);
+}
+
+/* 文本语义色（可在组件中复用） */
+.t-text-primary { color: var(--color-fg); }
+.t-text-secondary { color: color-mix(in srgb, var(--color-fg) 82%, transparent); }
+/* 文本语义状态色 */
+.t-text-success { color: var(--color-success-fg); }
+.t-text-error { color: var(--color-error-fg); }
+
+/* 边框语义状态色（用于卡片等容器的状态高亮） */
+.t-border-success { border-color: var(--color-success-fg); }
+.t-border-error { border-color: var(--color-error-fg); }
+
+/* 表单输入/选择等字段 */
+.t-field {
+  background: var(--color-surface-field);
+  color: var(--color-fg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  outline: none;
+  /* 覆盖 Tailwind 的高度/内边距类，交由密度变量控制 */
+  height: var(--control-h);
+  min-height: var(--control-h);
+  padding-inline: var(--control-px);
+}
+.t-field:focus-visible {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 60%, transparent);
+}
+
+/* Banner 统一样式与变体 */
+.t-banner {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-1);
+  padding: var(--space-2) var(--space-3);
+  font-size: 0.875rem;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+.t-banner--info { background: var(--color-info-bg); color: var(--color-info-fg); }
+.t-banner--success { background: var(--color-success-bg); color: var(--color-success-fg); }
+.t-banner--warning { background: var(--color-warning-bg); color: var(--color-warning-fg); }
+.t-banner--error { background: var(--color-error-bg); color: var(--color-error-fg); }
+
+/* 可复用毛玻璃样式：与 t-card 叠加使用 */
+.t-glass {
+  background: color-mix(in srgb, var(--color-surface) 50%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-border) 60%, transparent);
+  box-shadow: var(--shadow-2);
+  -webkit-backdrop-filter: saturate(1.05) blur(12px);
+  backdrop-filter: saturate(1.05) blur(12px);
+}
+
+/* 页面工具类：避免在页面中写内联渐变背景 */
+.bg-app-gradient {
+  background: var(--gradient-bg);
+}
+
+/* Skeleton：跟随当前主题的中性占位色 */
+.t-skeleton {
+  /* 以变量承载骨架色，支持主题统一覆写 */
+  background: var(--color-skeleton);
+  border-radius: var(--radius-md);
+}

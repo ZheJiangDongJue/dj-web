@@ -1,0 +1,65 @@
+/* 设计令牌（不含主题具体取值），仅定义语义名称与默认兜底 */
+:root {
+  /* 圆角 */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+
+  /* 间距（相对单位建议结合 rem） */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 1rem;
+  --space-4: 1.5rem;
+  --space-5: 2rem;
+  --space-6: 3rem;
+
+  /* 容器宽度 */
+  --container-max: 1200px;
+
+  /* 语义色变量（提供默认兜底，主题中会覆盖） */
+  --color-bg: #ffffff;
+  --color-fg: #0a0a0a;
+  --color-surface: #f6f7fb;
+  /* 输入等控件的表面层，默认与 surface 一致，可在主题中微调 */
+  --color-surface-field: var(--color-surface);
+  --color-border: rgba(0,0,0,0.08);
+  --color-accent: #2563eb;
+
+  /* 语义状态色（用于 Banner 等） */
+  --color-info-bg: #e0f2fe;     /* sky-100 */
+  --color-info-fg: #075985;     /* sky-800 */
+  --color-success-bg: #ecfdf5;  /* emerald-50 */
+  --color-success-fg: #065f46;  /* emerald-700 */
+  --color-warning-bg: #fef3c7;  /* amber-100 */
+  --color-warning-fg: #92400e;  /* amber-800 */
+  --color-error-bg: #fef2f2;    /* rose-50 */
+  --color-error-fg: #9f1239;    /* rose-800 */
+
+  /* 渐变背景（用于特殊页面如登录页） */
+  --gradient-bg: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+
+  /* 阴影 */
+  --shadow-1: 0 1px 2px rgba(0,0,0,0.06), 0 1px 1px rgba(0,0,0,0.04);
+  --shadow-2: 0 8px 24px rgba(0,0,0,0.08);
+
+  /* 控件尺寸（默认：cozy） */
+  --control-h: 2.75rem;   /* 按钮/输入高度 */
+  --control-px: 0.75rem;  /* 左右内边距 */
+
+  /* Skeleton 语义色（默认基于表面与前景混合，可被主题覆盖） */
+  --color-skeleton: color-mix(in srgb, var(--color-surface) 88%, var(--color-fg) 12%);
+}
+
+/* 密度：compact 下整体更紧凑（全局生效） */
+:root[data-density='compact'] {
+  /* 间距令牌整体收紧 */
+  --space-2: 0.4rem;   /* 8px → ~6.4px */
+  --space-3: 0.75rem;  /* 16px → 12px */
+  --space-4: 1.125rem; /* 24px → 18px */
+  --space-5: 1.5rem;   /* 32px → 24px */
+  --space-6: 2rem;     /* 48px → 32px */
+
+  /* 控件尺寸收紧 */
+  --control-h: 2.25rem;
+  --control-px: 0.5rem;
+}

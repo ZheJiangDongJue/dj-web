@@ -1,0 +1,26 @@
+/*
+  NCR 页面局部布局样式（仅负责布局，不侵入主题）
+  - 三段式：上 auto / 中 minmax(0, 1fr) / 下 auto
+  - 中段为滚动容器；父级由 MainFill 提供 flex-1/min-h-0
+*/
+.frame {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  min-height: 100%;
+}
+
+.top {
+  /* 顶部信息区：不滚动，仅自适应高度 */
+  min-height: 0; /* 保留类名，避免空规则告警 */
+}
+
+.middle {
+  /* 中部列表区：作为滚动容器 */
+  min-height: 0;
+}
+
+.bottom {
+  /* 留空占位区：按需调节高度，这里提供一个较小的最小高度 */
+  min-height: 24px;
+}
+

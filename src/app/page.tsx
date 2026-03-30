@@ -1,3 +1,11 @@
+/**
+ *
+ * 注意：本文件是“吉祥物页面”（Mascot Page），仅用于保留 Next 模板示例与视觉占位。
+ * - 请不要修改或依赖本页的业务逻辑。
+ * - 线上默认路由已在 next.config.ts 中配置重定向到 /login。
+ * - 如需展示欢迎页/介绍页，请新建独立路由（例如 /welcome），避免改动本文件。
+ *
+ */
 import Image from "next/image";
 
 export default function Home() {

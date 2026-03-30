@@ -1,20 +1,15 @@
-import { dirname } from "path";
-import { fileURLToPath } from "url";
-import { FlatCompat } from "@eslint/eslintrc";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
-const compat = new FlatCompat({
-  baseDirectory: __dirname,
-});
+import nextConfig from "eslint-config-next";
 
 const eslintConfig = [
-  ...compat.extends("next/core-web-vitals", "next/typescript"),
+  ...nextConfig,
   {
     ignores: [
       "node_modules/**",
       ".next/**",
+      "coverage/**",
+      ".原型/**",
+      // 忽略自动生成的大型类型镜像文件，避免无意义的 lint 噪音
+      "src/types/erp-db.generated.ts",
       "out/**",
       "build/**",
       "next-env.d.ts",

@@ -1,0 +1,20 @@
+/*
+  “请填写不合格记录”中间页布局样式（仅负责布局，不侵入主题）
+  - 页面使用单列居中卡片，跟随 MainFill/全局布局自适应高度
+*/
+.frame {
+  display: block;
+  min-height: 100%;
+}
+
+/*
+  统一按钮尺寸，服从密度变量（布局职责：影响大小与间距）
+  - 避免在组件中写死 px 高度/内边距，保持与 tokens.css 对齐
+  - 注意：主题色与圆角等仍由主题类（如 .t-accent）负责
+*/
+.btnSize {
+  height: var(--control-h);
+  min-height: var(--control-h);
+  padding-inline: var(--control-px);
+}
+

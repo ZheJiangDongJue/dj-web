@@ -1,0 +1,39 @@
+/* 布局：网格与容器，仅负责尺寸/位置，不涉颜色/圆角 */
+
+/* 中心容器：两侧留白，最大宽度由令牌控制 */
+.l-container {
+  width: min(100% - 2rem, var(--container-max));
+  margin-inline: auto;
+}
+
+/* 基础网格：仅定义网格与间距 */
+.l-grid {
+  display: grid;
+  gap: var(--space-4);
+}
+
+/* 常用列数变体（通过断点渐进增强） */
+.l-grid--1 { grid-template-columns: 1fr; }
+
+@media (min-width: 640px) {
+  .l-grid--2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (min-width: 768px) {
+  .l-grid--3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+@media (min-width: 1024px) {
+  .l-grid--4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+
+/* 侧边栏布局（自适应主副栏比例） */
+.l-sidebar {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-4);
+}
+@media (min-width: 1024px) {
+  .l-sidebar { grid-template-columns: 280px minmax(0, 1fr); }
+}
+
