@@ -137,7 +137,7 @@ export default function LoginForm({ className, app }: Props) {
       noValidate
       className={[
         't-card t-glass l-grid',
-        'p-4 sm:p-6',
+        'p-[var(--space-3)] sm:p-[var(--space-4)]',
         className ?? '',
       ].join(' ')}
     >

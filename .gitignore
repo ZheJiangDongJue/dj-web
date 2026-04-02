@@ -42,3 +42,4 @@ next-env.d.ts
 
 .docs/
 .ace-tool/
+.原型/

@@ -15,6 +15,8 @@
 
   /* 容器宽度 */
   --container-max: 1200px;
+  /* 容器两侧留白（总量：左右相加），用于超小屏收紧可用宽度 */
+  --container-gutter: 2rem;
 
   /* 语义色变量（提供默认兜底，主题中会覆盖） */
   --color-bg: #ffffff;
@@ -51,7 +53,8 @@
 }
 
 /* 密度：compact 下整体更紧凑（全局生效） */
-:root[data-density='compact'] {
+:root[data-density='compact'],
+:root[data-density-auto='compact'] {
   /* 间距令牌整体收紧 */
   --space-2: 0.4rem;   /* 8px → ~6.4px */
   --space-3: 0.75rem;  /* 16px → 12px */
@@ -62,4 +65,14 @@
   /* 控件尺寸收紧 */
   --control-h: 2.25rem;
   --control-px: 0.5rem;
+
+  /* 超小屏/紧凑密度下收紧容器留白 */
+  --container-gutter: 1.5rem;
+}
+
+/* 极小宽度下进一步释放空间（避免内容被两侧留白挤压） */
+@media (max-width: 320px) {
+  :root {
+    --container-gutter: 1rem;
+  }
 }

@@ -29,6 +29,17 @@ export default function ThemeInitScript() {
       if (density === 'compact' || density === 'cozy') {
         if (el.getAttribute('data-density') !== density) el.setAttribute('data-density', density);
       }
+      // 超小宽度/横屏小高度时自动压缩密度（不覆盖用户手动选择）
+      try {
+        var autoCompact = false;
+        try { autoCompact = !!(window.matchMedia && window.matchMedia('(max-width: 360px)').matches); } catch {}
+        try { autoCompact = autoCompact || !!(window.matchMedia && window.matchMedia('(orientation: landscape) and (max-height: 430px)').matches); } catch {}
+        if (autoCompact) {
+          if (el.getAttribute('data-density-auto') !== 'compact') el.setAttribute('data-density-auto', 'compact');
+        } else {
+          el.removeAttribute('data-density-auto');
+        }
+      } catch {}
       // 同步设置 html/body 背景兜底，防止边缘短暂露白
       var darkLike = (theme === 'dark' || theme === 'ocean' || theme === 'forest' || theme === 'rose');
       var solidBg = darkLike ? '#0b0f17' : '#ffffff';

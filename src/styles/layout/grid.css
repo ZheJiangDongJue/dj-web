@@ -2,7 +2,7 @@
 
 /* 中心容器：两侧留白，最大宽度由令牌控制 */
 .l-container {
-  width: min(100% - 2rem, var(--container-max));
+  width: min(100% - var(--container-gutter), var(--container-max));
   margin-inline: auto;
 }
 
@@ -36,4 +36,3 @@
 @media (min-width: 1024px) {
   .l-sidebar { grid-template-columns: 280px minmax(0, 1fr); }
 }
-

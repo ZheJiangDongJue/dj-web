@@ -5,7 +5,9 @@
   position: absolute;
   right: 0;
   margin-top: 0.75rem;
-  min-width: clamp(20rem, 30vw, 26rem);
+  /* 超小屏下避免面板宽度溢出视口导致横向滚动 */
+  width: clamp(20rem, 30vw, 26rem);
+  max-width: calc(100vw - 16px);
   z-index: 50;
   opacity: 0;
   transform: translateY(-6px) scale(0.98);
@@ -60,7 +62,11 @@
 .segBtnSelected { background: color-mix(in srgb, var(--color-accent) 16%, transparent); }
 
 /* 密度驱动：compact 下整体更紧凑 */
-:global([data-density='compact']) .list { gap: var(--space-2); }
-:global([data-density='compact']) .option { min-height: 36px; padding: 0.5rem 0.5rem; gap: var(--space-2); }
-:global([data-density='compact']) .dot { width: 14px; height: 14px; border-radius: 4px; }
-:global([data-density='compact']) .panel { min-width: clamp(18rem, 28vw, 22rem); }
+:global([data-density='compact']) .list,
+:global([data-density-auto='compact']) .list { gap: var(--space-2); }
+:global([data-density='compact']) .option,
+:global([data-density-auto='compact']) .option { min-height: 36px; padding: 0.5rem 0.5rem; gap: var(--space-2); }
+:global([data-density='compact']) .dot,
+:global([data-density-auto='compact']) .dot { width: 14px; height: 14px; border-radius: 4px; }
+:global([data-density='compact']) .panel,
+:global([data-density-auto='compact']) .panel { width: clamp(18rem, 28vw, 22rem); }

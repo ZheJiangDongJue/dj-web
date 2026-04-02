@@ -92,8 +92,8 @@ export default async function LoginPage({
   }
   return (
     <div className="relative min-h-dvh grid grid-rows-[auto_1fr_auto] bg-app-gradient">
-      <a href="#main" className="sr-only focus:not-sr-only absolute left-4 top-2 z-50 px-3 py-2 rounded bg-[var(--color-accent)] text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[var(--color-accent)]">跳到主要内容</a>
-      <header className="relative z-50 px-4 py-3 sm:px-6 sm:py-4 t-glass border-b border-[var(--color-border)]">
+      <a href="#main" className="sr-only focus:not-sr-only absolute left-3 top-2 z-50 px-3 py-2 rounded bg-[var(--color-accent)] text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[var(--color-accent)]">跳到主要内容</a>
+      <header className="relative z-50 px-3 py-3 sm:px-6 sm:py-4 t-glass border-b border-[var(--color-border)]">
         <div className="l-container l-row justify-between">
           <Link className="text-base font-semibold tracking-tight rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[var(--color-accent)] t-text-primary hover:opacity-90" href="/" aria-label="返回首页">
             东爵应用平台
@@ -102,7 +102,7 @@ export default async function LoginPage({
         </div>
       </header>
 
-      <main id="main" className="px-4 sm:px-6 py-6 sm:py-10 grid items-center">
+      <main id="main" className="px-3 sm:px-6 py-6 sm:py-10 grid items-center">
         <section
           aria-labelledby="login-title"
           className="l-container l-grid lg:grid-cols-12 lg:items-center"
@@ -136,7 +136,7 @@ export default async function LoginPage({
         </section>
       </main>
 
-      <footer className="px-4 sm:px-6 py-6 t-glass border-t border-[var(--color-border)]">
+      <footer className="px-3 sm:px-6 py-6 t-glass border-t border-[var(--color-border)]">
         <div className="l-container text-xs t-text-secondary">
           © {new Date().getFullYear()} 东爵信息. 保留所有权利。
         </div>
