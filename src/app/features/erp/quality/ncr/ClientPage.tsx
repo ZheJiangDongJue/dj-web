@@ -9,6 +9,7 @@ import ApproveFooterBar from '@/app/features/common/documents/ApproveFooterBar'
 import { DetailsCardList } from '@/components/molecules/DetailsCardList'
 import { ImageOverlayViewer, type ImageOverlayViewerToolbarProps } from '@/components/molecules/ImageOverlayViewer'
 import { CloseIconButton } from '@/components/ui/close-icon-button'
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import GridSelect from '@/components/ui/grid-select'
@@ -20,7 +21,7 @@ import { documentStatusToText, hasStatusFlag, getErpUserFromStorage } from "../s
 import FlowDetailPickDialog from '../shared/FlowDetailPickDialog'
 import { useNcrViewModelClass as useNcrVM, type LocalErpImageItem } from "./viewmodels/NcrViewModelClass"
 import { useNcrExternal } from "./viewmodels/useNcrExternal"
-import { isAndroidBridgeAvailable, pickImagesAdvanced } from "@/lib/android-bridge"
+import { isAndroidBridgeAvailable, pickImagesAdvanced, takePhoto } from "@/lib/android-bridge"
 import { loadImageBase64, type ErpImageItem } from "@/lib/image-loader"
 import { API_BASE, DEFAULT_DB_NAME } from '@/lib/config'
 import authFetch from '@/lib/auth/interceptor'
@@ -184,6 +185,15 @@ export default function ClientPage({
     event.target.value = ''
   }
 
+  /**
+   *
+   * Android 环境下：点击“+”新增照片时的底部菜单状态。
+   * - 仅在 isAndroidBridgeAvailable() 为 true 时才会被打开。
+   *
+   */
+  const [addPhotoMenuOpen, setAddPhotoMenuOpen] = useState(false)
+  const [addPhotoMenuBusy, setAddPhotoMenuBusy] = useState<null | 'camera' | 'album'>(null)
+
   // 首次进入：新建空白单据 + 载入下拉选项
   useEffect(() => {
     try { vm.createNewBill() } catch {}
@@ -288,6 +298,26 @@ export default function ClientPage({
       return
     }
 
+    setAddPhotoMenuOpen(true)
+  }, [vm])
+
+  /**
+   *
+   * Android：从相册选择（沿用现有高级图片选择器逻辑）。
+   *
+   */
+  const handlePickFromAlbum = useCallback(async () => {
+    if (vm.disableDetailEdit) {
+      try {
+        toast.warning('当前状态不允许修改照片证据')
+      } catch {}
+      return
+    }
+
+    // 先关闭菜单，避免覆盖层与原生界面叠加造成“点不动”的错觉
+    setAddPhotoMenuOpen(false)
+    setAddPhotoMenuBusy('album')
+
     try {
       const result = await pickImagesAdvanced({
         title: '选择照片证据',
@@ -298,12 +328,60 @@ export default function ClientPage({
         toast.error(result?.message ?? '调用图片选择器失败')
         return
       }
-      const next: LocalErpImageItem[] = (result.selected ?? []).map((it) => ({
-        ...it,
-      }))
+      const next: LocalErpImageItem[] = (result.selected ?? []).map((it) => ({ ...it }))
       vm.setLocalPhotoEvidence(next)
     } catch (error) {
       toast.error(`调用图片选择器异常：${String(error)}`)
+    } finally {
+      setAddPhotoMenuBusy(null)
+    }
+  }, [vm])
+
+  /**
+   *
+   * Android：拍照并自动追加到照片证据里。
+   * @remarks
+   * - 由原生侧负责：拍照后写入系统相册（MediaStore），并返回可用于高级图片选择器回显的图片项。\\n
+   *
+   */
+  const handleTakePhoto = useCallback(async () => {
+    if (vm.disableDetailEdit) {
+      try {
+        toast.warning('当前状态不允许修改照片证据')
+      } catch {}
+      return
+    }
+
+    setAddPhotoMenuOpen(false)
+    setAddPhotoMenuBusy('camera')
+
+    try {
+      const result = await takePhoto()
+      if (!result?.success) {
+        toast.error(result?.message ?? '拍照失败')
+        return
+      }
+
+      const now = Date.now()
+      const nextItem: LocalErpImageItem = {
+        id: result.id,
+        uri: result.uri,
+        path: typeof result.path === 'string' && result.path ? result.path : undefined,
+        name: typeof result.name === 'string' && result.name ? result.name : '拍照照片',
+        size: typeof result.size === 'number' ? result.size : undefined,
+        width: typeof result.width === 'number' ? result.width : undefined,
+        height: typeof result.height === 'number' ? result.height : undefined,
+        bucketName: typeof result.bucketName === 'string' && result.bucketName ? result.bucketName : undefined,
+        mime: typeof result.mime === 'string' && result.mime ? result.mime : undefined,
+        dateAdded: typeof result.dateAdded === 'number' && Number.isFinite(result.dateAdded) ? result.dateAdded : now,
+        selectedAt: typeof result.selectedAt === 'number' && Number.isFinite(result.selectedAt) ? result.selectedAt : now,
+      }
+
+      vm.appendLocalPhotoEvidence([nextItem])
+    } catch (error) {
+      toast.error(`拍照异常：${String(error)}`)
+    } finally {
+      setAddPhotoMenuBusy(null)
     }
   }, [vm])
 
@@ -383,6 +461,57 @@ export default function ClientPage({
         onPick={(c) => void vm.confirmDailyPlanFlowDetailPick?.(c as any)}
         onCancel={() => vm.cancelDailyPlanFlowDetailPick?.()}
       />
+
+      <Dialog
+        open={addPhotoMenuOpen}
+        onOpenChange={(next) => {
+          // 正在调起原生能力时，避免重复关闭/打开导致状态闪烁
+          if (addPhotoMenuBusy) return
+          setAddPhotoMenuOpen(next)
+        }}
+      >
+        <DialogContent
+          showCloseButton={false}
+          className="inset-x-0 bottom-0 top-auto left-0 translate-x-0 translate-y-0 w-full max-w-none rounded-t-xl rounded-b-none p-0 border-x-0 border-b-0"
+        >
+          {/* Radix Dialog 无障碍约束：必须提供 DialogTitle/Description。这里以 sr-only 方式满足要求，避免干扰现有 UI。 */}
+          <DialogTitle className="sr-only">添加照片证据</DialogTitle>
+          <DialogDescription className="sr-only">请选择拍照或相册来添加照片证据</DialogDescription>
+          <div className="t-card">
+            <div className="px-4 py-3 text-sm font-medium border-b border-[var(--color-border)]">
+              添加照片证据
+            </div>
+            <div className="p-2 pb-[calc(env(safe-area-inset-bottom)+0.5rem)]">
+              <div className="grid gap-2">
+                <button
+                  type="button"
+                  className="h-11 w-full rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-fg)] active:opacity-80 disabled:opacity-60 disabled:pointer-events-none"
+                  onClick={handleTakePhoto}
+                  disabled={addPhotoMenuBusy != null}
+                >
+                  拍照
+                </button>
+                <button
+                  type="button"
+                  className="h-11 w-full rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-fg)] active:opacity-80 disabled:opacity-60 disabled:pointer-events-none"
+                  onClick={handlePickFromAlbum}
+                  disabled={addPhotoMenuBusy != null}
+                >
+                  相册
+                </button>
+                <button
+                  type="button"
+                  className="h-11 w-full rounded-md border border-[var(--color-border)] bg-transparent text-[var(--color-fg-muted)] active:opacity-80 disabled:opacity-60 disabled:pointer-events-none"
+                  onClick={() => setAddPhotoMenuOpen(false)}
+                  disabled={addPhotoMenuBusy != null}
+                >
+                  取消
+                </button>
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <DocumentPageLayout
       className="w-full"

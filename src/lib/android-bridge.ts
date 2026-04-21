@@ -49,6 +49,23 @@ export interface AdvancedImagePickerResult extends AndroidBridgeResult {
   };
 }
 
+/**
+ *
+ * 调起相机拍照的返回值。
+ * @remarks
+ * - success=false：表示用户取消或拍照失败，仅保证 message 可用；\\n
+ * - success=true：返回可用于 NCR “照片证据”与高级图片选择器回显的图片项结构。\\n
+ *
+ */
+export type TakePhotoResult =
+  | (AndroidBridgeResult & {
+      success: false;
+    })
+  | (AndroidBridgeResult &
+      AdvancedImageItemPayload & {
+        success: true;
+      });
+
 export interface PickImagesAdvancedOptions {
   title?: string;
   maxCount?: number;
@@ -482,7 +499,7 @@ export function showToast(message: string, duration: "short" | "long" = "short")
  *
  */
 export function takePhoto() {
-  return sendToAndroid("takePhoto");
+  return sendToAndroid<TakePhotoResult>("takePhoto");
 }
 
 /**
