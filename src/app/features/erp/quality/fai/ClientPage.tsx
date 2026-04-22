@@ -269,7 +269,7 @@ function FaiBody({ rowGap, initialScanCode }: { rowGap: number; initialScanCode?
                     />
                   </div>
 
-                  <div className="mt-2 grid grid-cols-[26px_58px_26px_58px_26px_58px_26px_1fr] items-center gap-x-[6px] gap-y-[6px]">
+                  <div className="mt-2 grid grid-cols-[auto_minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-x-[6px] gap-y-[6px] sm:grid-cols-[26px_58px_26px_58px_26px_58px_26px_1fr]">
                     <Label className="text-[12px]">频率</Label>
                     <Input
                       value={toDisplayStr(item.Frequency)}
@@ -304,7 +304,7 @@ function FaiBody({ rowGap, initialScanCode }: { rowGap: number; initialScanCode?
                     />
                   </div>
 
-                  <div className="mt-2 grid grid-cols-[50px_repeat(5,58px)] items-center gap-x-[6px]">
+                  <div className="mt-2 grid grid-cols-[auto_repeat(5,minmax(0,1fr))] items-center gap-x-[6px] sm:grid-cols-[50px_repeat(5,58px)]">
                     <Label className="text-[12px]">实测1~5</Label>
                     {[
                       item.MeasuredRecord1,
@@ -453,25 +453,25 @@ function HeaderDocument({
   return (
     <div className="w-full">
       {/* 第一行：单据编号 物料编码 状态 */}
-      <div className="grid grid-cols-[56px_128px_53px_65px_64px] items-center gap-x-[2px]">
-        <GridLabel text="单据编号" className="w-[56px]" />
+      <div className="grid grid-cols-[auto_minmax(0,1fr)_auto_minmax(0,1fr)_auto] items-center gap-x-2 sm:grid-cols-[56px_128px_53px_65px_64px] sm:gap-x-[2px]">
+        <GridLabel text="单据编号" className="sm:w-[56px]" />
         <GridInput
           value={(bill as any).Code ?? ''}
           disabled
-          className="w-[128px]"
+          className="sm:w-[128px]"
           ariaLabel="单据编号"
           style={{ height: '25px', minHeight: '25px', paddingInline: '4px' }}
         />
-        <GridLabel text="物料编码" className="w-[53px]" />
+        <GridLabel text="物料编码" className="sm:w-[53px]" />
         <GridInput
           value={materialCode ?? ''}
           disabled
-          className="w-[65px]"
+          className="sm:w-[65px]"
           ariaLabel="物料编码"
           style={{ height: '25px', minHeight: '25px', paddingInline: '4px' }}
         />
         <span
-          className={`w-[64px] text-center ${getStatusTextClass(status)}`}
+          className={`sm:w-[64px] text-center whitespace-nowrap ${getStatusTextClass(status)}`}
           aria-label="单据状态"
         >
           {documentStatusToText(status)}
@@ -480,22 +480,22 @@ function HeaderDocument({
 
       {/* 第二行：制令单号 当前检验工序 */}
       <div
-        className="grid grid-cols-[55px_103px_78px_127px] items-center gap-x-[2px]"
+        className="grid grid-cols-[auto_minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-x-2 sm:grid-cols-[55px_103px_78px_127px] sm:gap-x-[2px]"
         style={{ marginTop: rowGap }}
       >
-        <GridLabel text="制令单号" className="w-[55px]" />
+        <GridLabel text="制令单号" className="sm:w-[55px]" />
         <GridInput
           value={toDisplayStr(bill.InnerKey)}
           disabled
-          className="w-[103px]"
+          className="sm:w-[103px]"
           ariaLabel="制令单号"
           style={{ height: '25px', minHeight: '25px', paddingInline: '4px' }}
         />
-        <GridLabel text="当前检验工序" className="w-[78px]" />
+        <GridLabel text="当前检验工序" className="sm:w-[78px]" />
         <GridSelect
           value={(bill as any)?.TypeofWorkid > 0 ? String((bill as any).TypeofWorkid) : ''}
           disabled
-          className="w-[127px]"
+          className="sm:w-[127px]"
           ariaLabel="当前检验工序"
           options={
             (processOptions && processOptions.length > 0)
@@ -509,33 +509,33 @@ function HeaderDocument({
 
       {/* 第三行：送检数 检验员 判定 */}
       <div
-        className="grid grid-cols-[40px_46px_40px_73px_29px_93px] items-center gap-x-[2px]"
+        className="grid grid-cols-[auto_minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-x-2 gap-y-1 sm:grid-cols-[40px_46px_40px_73px_29px_93px] sm:gap-x-[2px] sm:gap-y-0"
         style={{ marginTop: rowGap }}
       >
-        <GridLabel text="送检数" className="w-[40px] text-center" />
+        <GridLabel text="送检数" className="sm:w-[40px] text-center" />
         <GridInput
           value={toDisplayStr(bill.PreCmpBQty)}
           disabled
-          className="w-[46px]"
+          className="sm:w-[46px]"
           ariaLabel="送检数"
           style={{ height: '25px', minHeight: '25px', paddingInline: '4px' }}
         />
 
-        <GridLabel text="检验员" className="w-[40px] text-right t-text-error" />
+        <GridLabel text="检验员" className="sm:w-[40px] text-right t-text-error" />
         <GridSelect
           value={bill.Employeeid > 0 ? String(bill.Employeeid) : ''}
           onChange={(v) => actions.setBill('Employeeid', v === '' ? 0 : Number(v))}
-          className="w-[73px]"
+          className="sm:w-[73px]"
           ariaLabel="检验员"
           options={inspectorOptions}
           style={{ height: '24px', minHeight: '24px', paddingInline: '4px' }}
         />
 
-        <GridLabel text="判定" className="w-[29px] text-center t-text-error" />
+        <GridLabel text="判定" className="sm:w-[29px] text-center t-text-error" />
         <GridSelect
           value={billView.CheckResult === 0 ? '' : String(billView.CheckResult ?? '')}
           onChange={onJudgeChange}
-          className="w-[93px]"
+          className="sm:w-[93px]"
           ariaLabel="判定"
           options={[
             { label: '合格', value: '1' },
@@ -548,45 +548,45 @@ function HeaderDocument({
 
       {/* 第四行：检验数 合格数 让步数 不合格数 */}
       <div
-        className="grid grid-cols-[40px_46px_40px_46px_41px_46px_52px_46px] items-center gap-x-[2px]"
+        className="grid grid-cols-[auto_minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-x-2 gap-y-1 sm:grid-cols-[40px_46px_40px_46px_41px_46px_52px_46px] sm:gap-x-[2px] sm:gap-y-0"
         style={{ marginTop: rowGap }}
       >
-        <GridLabel text="检验数" className="w-[40px] t-text-error" />
+        <GridLabel text="检验数" className="sm:w-[40px] t-text-error" />
         <NumberInput
           value={toNumOrEmpty(bill.ChkBQty)}
           onValueChange={onChangeInspect}
           onChange={onChangeInspect}
-          className="w-[46px]"
+          className="sm:w-[46px]"
           ariaLabel="检验数"
           style={{ height: '26px', minHeight: '26px', paddingInline: '4px' }}
         />
 
-        <GridLabel text="合格数" className="w-[40px]" />
+        <GridLabel text="合格数" className="sm:w-[40px]" />
         <NumberInput
           value={toNumOrEmpty(bill.PassBQty)}
           onValueChange={onChangePass}
           onChange={onChangePass}
-          className="w-[46px]"
+          className="sm:w-[46px]"
           ariaLabel="合格数"
           style={{ height: '26px', minHeight: '26px', paddingInline: '4px' }}
         />
 
-        <GridLabel text="让步数" className="w-[41px]" />
+        <GridLabel text="让步数" className="sm:w-[41px]" />
         <NumberInput
           value={toNumOrEmpty(bill.RQty)}
           onValueChange={onChangeAllow}
           onChange={onChangeAllow}
-          className="w-[46px]"
+          className="sm:w-[46px]"
           ariaLabel="让步数"
           style={{ height: '26px', minHeight: '26px', paddingInline: '4px' }}
         />
 
-        <GridLabel text="不合格数" className="w-[52px]" />
+        <GridLabel text="不合格数" className="sm:w-[52px]" />
         <NumberInput
           value={toNumOrEmpty(bill.NotPassBQty)}
           onValueChange={onChangeNg}
           onChange={onChangeNg}
-          className="w-[46px] text-right"
+          className="sm:w-[46px] text-right"
           ariaLabel="不合格数"
           style={{ height: '26px', minHeight: '26px', paddingInline: '4px' }}
         />
