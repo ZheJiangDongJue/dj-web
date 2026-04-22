@@ -190,16 +190,22 @@ export async function loadImageBase64(
   const preferType: 'preview' | 'original' = options?.type ?? 'preview'
   const maxDim = options?.maxDim ?? 512
 
-  const hasLocalKey = Boolean(item.id || item.uri || item.path)
+  const normalizedId = typeof item.id === 'string' ? item.id.trim() : item.id
+  const normalizedUri = typeof item.uri === 'string' ? item.uri.trim() : item.uri
+  const normalizedPath = typeof item.path === 'string' ? item.path.trim() : item.path
+
+  const hasLocalKey = Boolean(normalizedId || normalizedUri || normalizedPath)
+  const hasServerKeys = Boolean(item.dbName && item.cloudFileId && item.cloudFileId > 0)
   const canUseAndroid = isAndroidBridgeAvailable()
+  const isRemoteOnly = item.isRemoteOnly === true
 
   // —— 路径一：尝试从 Android 本机读取 —— //
-  if (!item.isRemoteOnly && hasLocalKey && canUseAndroid) {
+  if (!isRemoteOnly && hasLocalKey && canUseAndroid) {
     try {
       const androidResult = await fetchImageBase64({
-        id: item.id,
-        uri: item.uri,
-        path: item.path,
+        id: normalizedId,
+        uri: normalizedUri,
+        path: normalizedPath,
         type: preferType,
         maxDim,
         width: item.width,
@@ -214,17 +220,47 @@ export async function loadImageBase64(
           source: 'android-local',
         }
       }
+
+      // Android 已返回，但未成功拿到 base64：若无服务器降级条件，则直接把原因透出，避免误报“缺少 cloudFileId”。
+      if (!hasServerKeys) {
+        return {
+          success: false,
+          message: androidResult?.message || 'Android 未返回可用的 base64 数据',
+          errorCode: androidResult?.success ? 'ANDROID_EMPTY_BASE64' : 'ANDROID_FETCH_FAILED',
+        }
+      }
     } catch (error) {
       // 本机读取失败不直接返回错误，尝试进入 WebApi 降级路径。
       console.warn('[image-loader] Android local fetch failed, fallback to server:', error)
+
+      // 本机读取失败：若无服务器降级条件，则直接返回本机错误，避免误导。
+      if (!hasServerKeys) {
+        const errorMessage =
+          typeof error === 'object' && error !== null && 'message' in error
+            ? String((error as { message?: unknown }).message ?? '')
+            : String(error ?? '未知错误')
+
+        return {
+          success: false,
+          message: errorMessage || 'Android 本地读取图片失败',
+          errorCode: 'ANDROID_FETCH_ERROR',
+        }
+      }
     }
   }
 
   // —— 路径二：WebApi 降级 —— //
-  if (!item.dbName || !item.cloudFileId || item.cloudFileId <= 0) {
+  if (!hasServerKeys) {
     return {
       success: false,
-      message: '缺少 dbName 或 cloudFileId，无法从服务器加载附件',
+      message:
+        isRemoteOnly
+          ? '图片被标记为仅远程文件，但缺少 dbName 或 cloudFileId，无法从服务器加载附件'
+          : !hasLocalKey
+            ? '缺少本地图片标识（id/uri/path），且无服务器端标识（dbName/cloudFileId）'
+            : !canUseAndroid
+              ? 'Android 桥接不可用，无法读取本地图片，且无服务器端标识（dbName/cloudFileId）'
+              : '缺少 dbName 或 cloudFileId，无法从服务器加载附件',
       errorCode: 'MISSING_SERVER_KEYS',
     }
   }
