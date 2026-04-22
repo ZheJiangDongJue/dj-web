@@ -1,6 +1,6 @@
 'use client'
 import { useFeaturesPageTitle } from '@/app/features/_components'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import styles from './ncr-prompt.module.css'
 import { useRouter, useSearchParams } from 'next/navigation'
 
@@ -8,14 +8,14 @@ import { useRouter, useSearchParams } from 'next/navigation'
  *
  * 中间页：请填写不合格记录
  * - 显示“不合格”说明与下一步操作，引导用户进入 NCR 页面。
- * - 可选支持倒计时自动跳转（通过查询参数启用），并提供取消自动跳转的能力。
+ * - 默认启用“静默倒计时”，倒计时结束自动选择“进入填写”。
  * 查询参数（全部可选，仅用于显示/跳转增强，不影响功能）：
  * - docNo:     当前末道检验单据编号
  * - material:  物料编码
  * - orderNo:   制令单号/工单号
  * - process:   检验工序
  * - ngQty:     不合格数量
- * - auto:      '1' 则启用倒计时自动跳转（默认关闭）
+ * - auto:      '0' 则关闭静默自动进入（默认开启）
  * - sec:       倒计时时长，默认 3 秒（1-30 的整数）
  *
  */
@@ -27,9 +27,9 @@ export default function ClientPage({
   useFeaturesPageTitle('请填写不合格记录')
   const router = useRouter()
 
-  // 开关：是否启用倒计时自动跳转（局部变量，可快速关闭）
-  // - 为不影响线上行为，默认开启；如需关闭，改为 false 即可。
-  const enableCountdownRedirect: boolean = false
+  // 开关：是否启用“静默倒计时自动进入”（局部变量，可快速关闭）
+  // - 如需紧急关闭静默自动进入，将该值改为 false。
+  const enableCountdownRedirect: boolean = true
 
   // 统一读取查询参数（服务端/客户端两处来源，客户端优先，以便动态修改）
   const sp = useSearchParams()
@@ -52,59 +52,30 @@ export default function ClientPage({
   const ngQty = getParam('ngQty')
 
   // 自动跳转控制
-  const enableAuto = enableCountdownRedirect && getParam('auto') === '1'
-  const secRaw = Math.max(1, Math.min(30, Number(getParam('sec') || 3)))
-  const [seconds, setSeconds] = useState<number>(enableAuto ? secRaw : 0)
+  const enableAuto = enableCountdownRedirect && getParam('auto') !== '0'
+  const countdownSeconds = useMemo(() => {
+    const raw = Number(getParam('sec') || 3)
+    const sec = Number.isFinite(raw) ? Math.floor(raw) : 3
+    return Math.max(1, Math.min(30, sec))
+  }, [getParam])
+
+  const hasNavigatedRef = useRef<boolean>(false)
   const timerRef = useRef<number | null>(null)
 
   /**
    *
-   * 开始倒计时。
+   * 清除“静默倒计时”计时器。
+   * @remarks
+   * - 避免用户手动点击后仍触发自动进入，导致二次跳转。
    *
    */
-  const startTimer = useCallback(() => {
-    if (!enableAuto) return
-    if (timerRef.current) return
-    timerRef.current = window.setInterval(() => {
-      setSeconds((s) => {
-        const n = s - 1
-        if (n <= 0) {
-          window.clearInterval(timerRef.current!)
-          timerRef.current = null
-          // 自动进入 NCR 填写页面
-          try {
-            router.push('/features/erp/quality/ncr')
-          } catch {}
-          return 0
-        }
-        return n
-      })
-    }, 1000)
-  }, [enableAuto, router])
-
-  /**
-   *
-   * 取消自动跳转：清除计时器并将剩余秒数清零。
-   *
-   */
-  const cancelAuto = useCallback(() => {
-    if (timerRef.current) {
-      try { window.clearInterval(timerRef.current) } catch {}
-      timerRef.current = null
-    }
-    setSeconds(0)
+  const clearAutoTimer = useCallback(() => {
+    if (timerRef.current == null) return
+    try {
+      window.clearTimeout(timerRef.current)
+    } catch {}
+    timerRef.current = null
   }, [])
-
-  useEffect(() => {
-    if (!enableAuto) return
-    startTimer()
-    return () => {
-      if (timerRef.current) {
-        try { window.clearInterval(timerRef.current) } catch {}
-        timerRef.current = null
-      }
-    }
-  }, [enableAuto, startTimer])
 
   /**
    *
@@ -112,6 +83,9 @@ export default function ClientPage({
    *
    */
   const goNcr = useCallback(() => {
+    if (hasNavigatedRef.current) return
+    clearAutoTimer()
+    hasNavigatedRef.current = true
     try {
       const billId = getParam('billId')
       const type = getParam('type')
@@ -122,8 +96,10 @@ export default function ClientPage({
       if (billId && String(billId).trim() !== '') qs.set('billId', String(billId))
       const suffix = qs.toString()
       router.push(`/features/erp/quality/ncr${suffix ? `?${suffix}` : ''}`)
-    } catch {}
-  }, [router, getParam])
+    } catch {
+      hasNavigatedRef.current = false
+    }
+  }, [router, getParam, clearAutoTimer])
 
   /**
    *
@@ -132,13 +108,45 @@ export default function ClientPage({
    *
    */
   const goBackFqc = useCallback(() => {
+    if (hasNavigatedRef.current) return
+    clearAutoTimer()
+    hasNavigatedRef.current = true
     try {
       const billId = getParam('billId')
       const qs = new URLSearchParams({ action: 'unapprove' })
       if (billId && String(billId).trim() !== '') qs.set('billId', String(billId))
       router.push(`/features/erp/quality/fqc?${qs.toString()}`)
-    } catch {}
-  }, [router, getParam])
+    } catch {
+      hasNavigatedRef.current = false
+    }
+  }, [router, getParam, clearAutoTimer])
+
+  /**
+   *
+   * 静默倒计时：倒计时结束自动选择“进入填写”。
+   *
+   */
+  const startSilentCountdown = useCallback(() => {
+    if (!enableAuto) return
+    if (hasNavigatedRef.current) return
+    if (timerRef.current != null) return
+    timerRef.current = window.setTimeout(() => {
+      timerRef.current = null
+      if (hasNavigatedRef.current) return
+      goNcr()
+    }, countdownSeconds * 1000)
+  }, [enableAuto, countdownSeconds, goNcr])
+
+  useEffect(() => {
+    if (!enableAuto) {
+      clearAutoTimer()
+      return
+    }
+    startSilentCountdown()
+    return () => {
+      clearAutoTimer()
+    }
+  }, [enableAuto, startSilentCountdown, clearAutoTimer])
 
   return (
     <section className={`mx-auto w-full max-w-[414px] ${styles.frame}`}>
@@ -205,21 +213,6 @@ export default function ClientPage({
               反审批
             </button>
           </div>
-
-          {/* 自动跳转提示 */}
-          {enableAuto && seconds > 0 && (
-            <div className="mt-3 text-xs text-neutral-500">
-              将在 <span className="tabular-nums">{seconds}</span> 秒后自动进入填写
-              <button
-                type="button"
-                aria-label="取消自动跳转"
-                onClick={cancelAuto}
-                className="ml-2 underline decoration-dotted underline-offset-2 hover:text-neutral-700"
-              >
-                取消
-              </button>
-            </div>
-          )}
         </div>
       </div>
     </section>
