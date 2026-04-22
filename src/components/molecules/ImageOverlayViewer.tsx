@@ -113,6 +113,15 @@ export interface ImageOverlayViewerProps {
   onOpenChange?: (open: boolean) => void
   /**
    *
+   * 是否允许“点击/触摸空白背景关闭”策略。
+   * - 开启时：在视口空白区域（非图片/工具栏）按下会触发关闭；鼠标仅响应左键。
+   * - 关闭时：空白区域按下不会触发任何行为（避免误触导致关闭或拖拽图片）。
+   * @default true
+   *
+   */
+  closeOnBackdropPointerDown?: boolean
+  /**
+   *
    * 底部操作按钮集合，例如保存、分享等。
    *
    */
@@ -134,7 +143,9 @@ export interface ImageOverlayViewerProps {
   initialFitMode?: 'contain' | 'original'
   /**
    *
-   * 最小缩放比例，默认 0.5。
+   * 最小缩放比例，默认 0.05（5%）。
+   * - 作为缩放下限，控制用户滚轮/捏合时最小能缩到多少；
+   * - contain 初次适配不会被该值限制（否则大图可能无法完整落在屏幕内）。
    *
    */
   minScale?: number
@@ -231,9 +242,10 @@ export function ImageOverlayViewer({
   title,
   description,
   onOpenChange,
+  closeOnBackdropPointerDown = true,
   actions,
   initialScale = 1,
-  minScale = 0.5,
+  minScale = 0.05,
   maxScale = 4,
   initialFitMode = 'contain',
   className,
@@ -245,6 +257,7 @@ export function ImageOverlayViewer({
     y: 0,
   }))
   const [isDragging, setIsDragging] = useState(false)
+  const [isImageLayoutNatural, setIsImageLayoutNatural] = useState(false)
 
   const pointersRef = useRef<Map<number, PointerPosition>>(new Map())
   const viewportRef = useRef<HTMLDivElement | null>(null)
@@ -274,6 +287,11 @@ export function ImageOverlayViewer({
     if (!open) return
     const id = requestAnimationFrame(() => {
       setTransform({ scale: initialScale, x: 0, y: 0 })
+      // 每次打开/切换图片时，先按“受约束布局（max-width: 100%）”渲染一帧，
+      // 等图片加载完成后再切换到“原始尺寸布局 + transform 缩放”。
+      // 这样可以避免出现：先铺满屏幕 -> onLoad 后又被二次缩放回很小的问题。
+      setIsImageLayoutNatural(false)
+      naturalSizeRef.current = null
       dragRef.current = {
         active: false,
         pointerId: null,
@@ -291,7 +309,7 @@ export function ImageOverlayViewer({
       setIsDragging(false)
     })
     return () => cancelAnimationFrame(id)
-  }, [open, initialScale])
+  }, [open, src, initialScale])
 
   /**
    *
@@ -377,6 +395,7 @@ export function ImageOverlayViewer({
           y: 0,
         }),
       )
+      setIsImageLayoutNatural(true)
 
       dragRef.current = {
         active: false,
@@ -499,6 +518,9 @@ export function ImageOverlayViewer({
     (event: ReactPointerEvent<HTMLDivElement>) => {
       // 点击黑色背景关闭：仅在点击 viewport 自身（非图片/工具栏/按钮）时触发。
       if (event.target === event.currentTarget) {
+        if (!closeOnBackdropPointerDown) {
+          return
+        }
         // 仅响应主键点击，避免右键等误触（触摸/笔通常为 0）。
         if (event.pointerType === 'mouse' && event.button !== 0) {
           return
@@ -546,7 +568,7 @@ export function ImageOverlayViewer({
         setIsDragging(false)
       }
     },
-    [transform.x, transform.y, transform.scale, onOpenChange],
+    [transform.x, transform.y, transform.scale, onOpenChange, closeOnBackdropPointerDown],
   )
 
   /**
@@ -656,6 +678,7 @@ export function ImageOverlayViewer({
             </div>
             <CloseIconButton
               ariaLabel="关闭图像预览"
+              variant="solid"
               className="h-9 w-9 md:h-10 md:w-10"
               onClick={() => {
                 try {
@@ -679,6 +702,7 @@ export function ImageOverlayViewer({
             <div
               className={cn(
                 styles.imageLayer,
+                isImageLayoutNatural && styles.imageLayerNatural,
                 isDragging && styles.imageLayerGrabbing,
               )}
               style={{
@@ -689,7 +713,7 @@ export function ImageOverlayViewer({
                 ref={imageRef}
                 src={src}
                 alt={alt}
-                className={styles.image}
+                className={cn(styles.image, isImageLayoutNatural && styles.imageNatural)}
                 onLoad={() => handleImageLoad(initialFitMode)}
               />
             </div>

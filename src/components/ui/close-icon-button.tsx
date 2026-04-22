@@ -18,6 +18,14 @@ export interface CloseIconButtonProps
    *
    */
   ariaLabel: string
+  /**
+   *
+   * 按钮视觉样式变体。
+   * - outline：透明背景 + 轻边框（默认），适合叠在卡片/页面底色上；
+   * - solid：实体底色（不透明），适合叠在图片/复杂背景上以保证可读性。
+   *
+   */
+  variant?: 'outline' | 'solid'
 }
 
 /**
@@ -30,6 +38,7 @@ export function CloseIconButton({
   ariaLabel,
   className,
   type = 'button',
+  variant = 'outline',
   ...props
 }: CloseIconButtonProps): ReactElement {
   return (
@@ -39,9 +48,17 @@ export function CloseIconButton({
       className={cn(
         // 布局尺寸：小圆形图标按钮
         'flex h-[22px] w-[22px] items-center justify-center rounded-full',
-        // 主题样式：中性边框 + 悬停错误色，保持弱提示
-        'border border-border/80 text-muted-foreground transition-colors',
-        'hover:bg-destructive/10 hover:text-destructive',
+        // 主题样式：默认弱提示（透明背景）；位图叠底场景可用 solid 变体提升对比度。
+        variant === 'solid'
+          ? [
+              'bg-[var(--color-surface)] text-[var(--color-fg)] shadow-sm',
+              'border border-[var(--color-border)] transition-colors',
+              'hover:bg-[var(--color-error-bg)] hover:text-[var(--color-error-fg)]',
+            ]
+          : [
+              'border border-border/80 text-muted-foreground transition-colors',
+              'hover:bg-destructive/10 hover:text-destructive',
+            ],
         'focus:outline-hidden focus:ring-2 focus:ring-destructive focus:ring-offset-1',
         'disabled:pointer-events-none disabled:opacity-60',
         // 图标尺寸与禁用事件穿透

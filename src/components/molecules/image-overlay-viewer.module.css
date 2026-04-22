@@ -74,6 +74,12 @@
   will-change: transform;
 }
 
+.imageLayerNatural {
+  max-width: none;
+  max-height: none;
+  flex: 0 0 auto;
+}
+
 .imageLayerGrabbing {
   cursor: grabbing;
 }
@@ -85,6 +91,11 @@
   /* max-width: none; */
   max-height: none;
   pointer-events: none;
+}
+
+.imageNatural {
+  max-width: none;
+  max-height: none;
 }
 
 .toolbar {
