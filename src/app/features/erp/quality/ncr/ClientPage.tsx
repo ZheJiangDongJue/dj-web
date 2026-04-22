@@ -1321,6 +1321,7 @@ function PhotoGrid({
           alt={viewerState.alt}
           title={viewerState.alt}
           description="双指捏合缩放，拖动平移查看照片细节"
+          closeOnBackdropPointerDown={false}
           onOpenChange={(next) => {
             if (!next) setViewerState(null)
           }}
