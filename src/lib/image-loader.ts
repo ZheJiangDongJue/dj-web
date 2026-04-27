@@ -167,6 +167,25 @@ function buildDownloadUrl(dbName: string, cloudFileId: number, fileName?: string
 
 /**
  *
+ * 提取 WebApi 下载附件所需的关键字段。
+ * @returns 若缺失/非法则返回 null，避免在业务流程中频繁写非空断言。
+ *
+ */
+function getServerDownloadKeys(
+  item: ErpImageItem,
+): { dbName: string; cloudFileId: number } | null {
+  const dbName = typeof item.dbName === 'string' ? item.dbName.trim() : ''
+  const cloudFileId = item.cloudFileId
+
+  if (!dbName || typeof cloudFileId !== 'number' || cloudFileId <= 0) {
+    return null
+  }
+
+  return { dbName, cloudFileId }
+}
+
+/**
+ *
  * 统一加载单张图片的 base64：
  * - 优先尝试通过 Android WebView 本地能力（fetchImageBase64）读取；
  * - 若本地不可用、失败或标记为远程文件，则降级到 WebApi 的 FileController.Download；
@@ -195,7 +214,8 @@ export async function loadImageBase64(
   const normalizedPath = typeof item.path === 'string' ? item.path.trim() : item.path
 
   const hasLocalKey = Boolean(normalizedId || normalizedUri || normalizedPath)
-  const hasServerKeys = Boolean(item.dbName && item.cloudFileId && item.cloudFileId > 0)
+  const serverKeys = getServerDownloadKeys(item)
+  const hasServerKeys = Boolean(serverKeys)
   const canUseAndroid = isAndroidBridgeAvailable()
   const isRemoteOnly = item.isRemoteOnly === true
 
@@ -250,7 +270,7 @@ export async function loadImageBase64(
   }
 
   // —— 路径二：WebApi 降级 —— //
-  if (!hasServerKeys) {
+  if (!serverKeys) {
     return {
       success: false,
       message:
@@ -265,7 +285,7 @@ export async function loadImageBase64(
     }
   }
 
-  const downloadUrl = buildDownloadUrl(item.dbName, item.cloudFileId, item.fileName)
+  const downloadUrl = buildDownloadUrl(serverKeys.dbName, serverKeys.cloudFileId, item.fileName)
 
   try {
     const response = await authFetch(downloadUrl, {
