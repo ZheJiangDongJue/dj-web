@@ -39,7 +39,7 @@ export type SelectOption = import('../../shared/reworkFlowDetailOptions').Select
  * - localFile/localObjectUrl 仅在 PC 浏览器选择文件时存在；Android 端通常通过 uri/path/id 等字段识别。\\n
  *
  */
- export type LocalErpImageItem = ErpImageItem & {
+export type LocalErpImageItem = ErpImageItem & {
 
   localFile?: File
   /**
@@ -57,22 +57,22 @@ export type SelectOption = import('../../shared/reworkFlowDetailOptions').Select
  * - 使用 erp-db.generated 生成的 DTO class，并调用 initDefaults 初始化默认值。\\n
  *
  */
- function createEmptyNcrDocument(): DefectiveReworkOrderDocument {
- const doc = new DefectiveReworkOrderDocument();
- doc.initDefaults();
- return doc;
- }
+function createEmptyNcrDocument(): DefectiveReworkOrderDocument {
+  const doc = new DefectiveReworkOrderDocument();
+  doc.initDefaults();
+  return doc;
+}
 
 /**
  *
  * 构造 NCR 明细默认对象。
  *
  */
- function createEmptyNcrDetail(): DefectiveReworkOrderDetail {
- const detail = new DefectiveReworkOrderDetail();
- detail.initDefaults();
- return detail;
- }
+function createEmptyNcrDetail(): DefectiveReworkOrderDetail {
+  const detail = new DefectiveReworkOrderDetail();
+  detail.initDefaults();
+  return detail;
+}
 
 /**
  *
@@ -83,14 +83,14 @@ export type SelectOption = import('../../shared/reworkFlowDetailOptions').Select
  * - 复用 QualityDocumentBase（保存/审批/反审批/删除等通用流程）。\\n
  *
  */
- export class NcrViewModel extends QualityDocumentBase<DefectiveReworkOrderDocument, DefectiveReworkOrderDetail> {
+export class NcrViewModel extends QualityDocumentBase<DefectiveReworkOrderDocument, DefectiveReworkOrderDetail> {
   public static __djScanListenerKey = 'dj-web:quality:ncr'
 
-/**
- *
- * 当前单据表头（Bill）。
- *
- */
+  /**
+   *
+   * 当前单据表头（Bill）。
+   *
+   */
   public bill: DefectiveReworkOrderDocument
 
   /**
@@ -121,15 +121,15 @@ export type SelectOption = import('../../shared/reworkFlowDetailOptions').Select
    * - 始终从 bill.status 推导，避免出现重复状态源。\\n
    *
    */
- private get currentStatus(): number {
- return parseDocumentStatus((this.bill as any)?.status ?? (this.bill as any)?.Status)
- }
+  private get currentStatus(): number {
+    return parseDocumentStatus((this.bill as any)?.status ?? (this.bill as any)?.Status)
+  }
 
-/**
- *
- * 必填项管理器（供 View 注册字段校验）。
- *
- */
+  /**
+   *
+   * 必填项管理器（供 View 注册字段校验）。
+   *
+   */
   public required: RequiredFieldManager<unknown> = createRequiredFieldManager<unknown>()
 
   /**
@@ -199,16 +199,16 @@ export type SelectOption = import('../../shared/reworkFlowDetailOptions').Select
    * - 前端通过 image-loader/loadImageBase64 基于 dbName + cloudFileId 异步获取 base64 进行预览。\\n
    *
    */
- public serverPhotoEvidence: ErpImageItem[] = []
+  public serverPhotoEvidence: ErpImageItem[] = []
 
-/**
- *
- * 当前会话中尚未保存到服务器的“本地照片证据”列表。
- * @remarks
- * - Android：来自高级图片选择器（uri/path/id 等信息）；\\n
- * - PC：来自 input[type=file]（包含 localFile/localObjectUrl）。\\n
- *
- */
+  /**
+   *
+   * 当前会话中尚未保存到服务器的“本地照片证据”列表。
+   * @remarks
+   * - Android：来自高级图片选择器（uri/path/id 等信息）；\\n
+   * - PC：来自 input[type=file]（包含 localFile/localObjectUrl）。\\n
+   *
+   */
   public localPhotoEvidence: LocalErpImageItem[] = []
 
   /**
@@ -225,12 +225,12 @@ export type SelectOption = import('../../shared/reworkFlowDetailOptions').Select
    */
   public dailyPlanPickBusy = false
 
-/**
- *
- * 操作进行中标记。
- * @remarks 用于跨 save/approve 两段过程禁用按钮，避免重复提交。
- *
- */
+  /**
+   *
+   * 操作进行中标记。
+   * @remarks 用于跨 save/approve 两段过程禁用按钮，避免重复提交。
+   *
+   */
   private actionBusy = false
 
   /**
@@ -238,13 +238,13 @@ export type SelectOption = import('../../shared/reworkFlowDetailOptions').Select
    * NCR 应用层服务（用例编排入口）。
    *
    */
- private readonly appService: NcrApplicationService
+  private readonly appService: NcrApplicationService
 
-/**
- *
- * 调试菜单项（供 DebugFab 渲染）。
- *
- */
+  /**
+   *
+   * 调试菜单项（供 DebugFab 渲染）。
+   *
+   */
   public debugMenu: DebugMenuItem[] = []
 
   /**
@@ -288,197 +288,197 @@ export type SelectOption = import('../../shared/reworkFlowDetailOptions').Select
          * - 仅用于开启删除能力的门闩；实际删除仍经由 DocumentActions.remove。\\n
          *
          */
- remove: async (id: number) => {
- return appService.delete(Number(id))
- },
+        remove: async (id: number) => {
+          return appService.delete(Number(id))
+        },
 
-/**
- *
- * 按 ID 获取 NCR 表头+明细（供 DocumentBase.refresh/openById 使用）。
- *
- */
- fetchById: async (id: number) => {
- return appService.fetchById(Number(id))
- },
- extractId: () => 0,
- } as unknown as DocumentService<DefectiveReworkOrderDocument, DefectiveReworkOrderDetail>,
- createEmptyDocument: createEmptyNcrDocument,
- createInitialDetails: () => [],
- deriveStatus: (doc) => parseDocumentStatus((doc as any)?.status ?? (doc as any)?.Status),
- hasStatusFlag,
- statusFlagConfig: {
- frozen: DocumentStatus.已冻结,
- closed: DocumentStatus.已结案,
- voided: DocumentStatus.已作废,
- approved: DocumentStatus.已审批,
- unapproved: DocumentStatus.未审批,
- },
- validateBeforeApprove: () => {
- const b = this.bill as any
- const emp = Number(b?.Employeeid)
- if (!Number.isFinite(emp) || emp <= 0) {
- try { toast.warning('请先填写：检验员') } catch { }
- try { focusComboboxByAriaLabel('检验员') } catch { }
- return false
- }
- const proc = Number(b?.TypeofWorkid)
- if (!Number.isFinite(proc) || proc <= 0) {
- try { toast.warning('请先填写：工种') } catch { }
- try { focusComboboxByAriaLabel('工种') } catch { }
- return false
- }
- const list = Array.isArray(this.details) ? this.details : []
- if (list.length <= 0) {
- try { toast.warning('请至少填写：不合格记录（至少 1 行）') } catch { }
- if (typeof window !== 'undefined') {
- try {
- const el = document.querySelector<HTMLElement>('[aria-label="新增明细"]')
- if (el) {
- try { el.scrollIntoView({ block: 'center', behavior: 'smooth' }) } catch { }
- try { el.focus() } catch { }
- }
- } catch { }
- }
- return false
- }
- for (let i = 0; i < list.length; i++) {
- const it = list[i] as any
- const s = String(it?.Adversesituation ?? '').trim()
- if (s === '') {
- try { toast.warning(`请先填写：第${i + 1}行 - 记录`) } catch { }
- if (typeof window !== 'undefined') {
- try {
- const selector = `[aria-label="第${i + 1}行-记录"]`
- const el = document.querySelector<HTMLElement>(selector)
- if (el) {
- try { el.scrollIntoView({ block: 'center', behavior: 'smooth' }) } catch { }
- try { el.focus() } catch { }
- }
- } catch { }
- }
- return false
- }
- }
- // 照片证据：审批前必须至少有 1 张（已保存到服务器或当前会话本地选择均视为有效）。
- const serverPhotos = Array.isArray(this.serverPhotoEvidence) ? this.serverPhotoEvidence : []
- const localPhotos = Array.isArray(this.localPhotoEvidence) ? this.localPhotoEvidence : []
- if (serverPhotos.length + localPhotos.length <= 0) {
- try { toast.warning('请先上传：照片证据') } catch { }
- if (typeof window !== 'undefined') {
- try {
- const el = document.querySelector<HTMLElement>('[title=\"添加照片\"]')
- if (el) {
- try { el.scrollIntoView({ block: 'center', behavior: 'smooth' }) } catch { }
- try { el.focus() } catch { }
- }
- } catch { }
- }
- return false
- }
- return true
- },
- autoRefreshAfterSave: true,
- refreshAfterApprove: false,
- refreshAfterUnapprove: false,
- onAfterSave: async (id) => {
- const n = typeof id === 'number' ? id : Number(id)
- if (Number.isFinite(n) && n > 0) {
- await this.loadServerPhotoEvidence(n)
- }
- },
- // 刷新后确保界面与服务端同步，并补齐显示字段
-  onAfterRefresh: async ({ document, details }, ctx) => {
-    if (ctx && !ctx.isActive()) return
-    await this.enrichAfterRefresh(document, Array.isArray(details) ? details : [])
-  },
- initialId: null,
- statusApprovedValue: DocumentStatus.已审批,
- statusUnapprovedValue: DocumentStatus.未审批,
- })
- this.appService = appService
- // 初始化本地状态
- this.bill = createEmptyNcrDocument()
- this.details = []
- // 建立非 Hook 的动作对象
- const actions = createDocumentActions({
- initialId: null,
- onStateChange: (s) => { this.loading = !!s.loading; this.currentId = toNumericId(s.id as any); this.emit() },
- callSave: async () => {
- const res = await this.appService.save({
- bill: this.bill,
- details: this.details,
- localPhotoEvidence: this.localPhotoEvidence,
- })
- if (res.clearLocalPhotoEvidence) {
- // 上传成功：清理本地照片证据，避免后续重复上传
- this.clearLocalPhotoEvidence()
- }
- return { id: res.id, code: res.code }
- },
- callApprove: async (id) => {
- return this.appService.approve(Number(id), { bill: this.bill, details: this.details })
- },
- callUnapprove: async (id) => {
- return this.appService.unapprove(Number(id), { bill: this.bill, details: this.details })
- },
- callDelete: async (id) => {
- return this.appService.delete(Number(id))
- },
- })
- // 绑定桥接：统一通过 bill.status 作为唯一状态来源
- this.bindBridge({
- getDocument: () => this.bill,
- getDetails: () => this.details,
- getStatus: () => this.currentStatus,
- getStatusRef: () => this.currentStatus,
- setDocument: (next) => {
- this.bill = next
- this.emit()
- },
- setDetails: (next) => { this.details = Array.isArray(next) ? next : []; this.emit() },
- setStatus: (next) => {
- const n = typeof next === 'number' ? next : Number(next as unknown)
- const resolved = Number.isFinite(n) && n !== 0 ? n : DocumentStatus.未审批
- this.bill = { ...(this.bill as any), status: resolved } as DefectiveReworkOrderDocument
- this.emit()
- },
- docActions: actions,
- })
- }
+        /**
+         *
+         * 按 ID 获取 NCR 表头+明细（供 DocumentBase.refresh/openById 使用）。
+         *
+         */
+        fetchById: async (id: number) => {
+          return appService.fetchById(Number(id))
+        },
+        extractId: () => 0,
+      } as unknown as DocumentService<DefectiveReworkOrderDocument, DefectiveReworkOrderDetail>,
+      createEmptyDocument: createEmptyNcrDocument,
+      createInitialDetails: () => [],
+      deriveStatus: (doc) => parseDocumentStatus((doc as any)?.status ?? (doc as any)?.Status),
+      hasStatusFlag,
+      statusFlagConfig: {
+        frozen: DocumentStatus.已冻结,
+        closed: DocumentStatus.已结案,
+        voided: DocumentStatus.已作废,
+        approved: DocumentStatus.已审批,
+        unapproved: DocumentStatus.未审批,
+      },
+      validateBeforeApprove: () => {
+        const b = this.bill as any
+        const emp = Number(b?.Employeeid)
+        if (!Number.isFinite(emp) || emp <= 0) {
+          try { toast.warning('请先填写：检验员') } catch { }
+          try { focusComboboxByAriaLabel('检验员') } catch { }
+          return false
+        }
+        const proc = Number(b?.TypeofWorkid)
+        if (!Number.isFinite(proc) || proc <= 0) {
+          try { toast.warning('请先填写：工种') } catch { }
+          try { focusComboboxByAriaLabel('工种') } catch { }
+          return false
+        }
+        const list = Array.isArray(this.details) ? this.details : []
+        if (list.length <= 0) {
+          try { toast.warning('请至少填写：不合格记录（至少 1 行）') } catch { }
+          if (typeof window !== 'undefined') {
+            try {
+              const el = document.querySelector<HTMLElement>('[aria-label="新增明细"]')
+              if (el) {
+                try { el.scrollIntoView({ block: 'center', behavior: 'smooth' }) } catch { }
+                try { el.focus() } catch { }
+              }
+            } catch { }
+          }
+          return false
+        }
+        for (let i = 0; i < list.length; i++) {
+          const it = list[i] as any
+          const s = String(it?.Adversesituation ?? '').trim()
+          if (s === '') {
+            try { toast.warning(`请先填写：第${i + 1}行 - 记录`) } catch { }
+            if (typeof window !== 'undefined') {
+              try {
+                const selector = `[aria-label="第${i + 1}行-记录"]`
+                const el = document.querySelector<HTMLElement>(selector)
+                if (el) {
+                  try { el.scrollIntoView({ block: 'center', behavior: 'smooth' }) } catch { }
+                  try { el.focus() } catch { }
+                }
+              } catch { }
+            }
+            return false
+          }
+        }
+        // 照片证据：审批前必须至少有 1 张（已保存到服务器或当前会话本地选择均视为有效）。
+        const serverPhotos = Array.isArray(this.serverPhotoEvidence) ? this.serverPhotoEvidence : []
+        const localPhotos = Array.isArray(this.localPhotoEvidence) ? this.localPhotoEvidence : []
+        if (serverPhotos.length + localPhotos.length <= 0) {
+          try { toast.warning('请先上传：照片证据') } catch { }
+          if (typeof window !== 'undefined') {
+            try {
+              const el = document.querySelector<HTMLElement>('[title=\"添加照片\"]')
+              if (el) {
+                try { el.scrollIntoView({ block: 'center', behavior: 'smooth' }) } catch { }
+                try { el.focus() } catch { }
+              }
+            } catch { }
+          }
+          return false
+        }
+        return true
+      },
+      autoRefreshAfterSave: true,
+      refreshAfterApprove: false,
+      refreshAfterUnapprove: false,
+      onAfterSave: async (id) => {
+        const n = typeof id === 'number' ? id : Number(id)
+        if (Number.isFinite(n) && n > 0) {
+          await this.loadServerPhotoEvidence(n)
+        }
+      },
+      // 刷新后确保界面与服务端同步，并补齐显示字段
+      onAfterRefresh: async ({ document, details }, ctx) => {
+        if (ctx && !ctx.isActive()) return
+        await this.enrichAfterRefresh(document, Array.isArray(details) ? details : [])
+      },
+      initialId: null,
+      statusApprovedValue: DocumentStatus.已审批,
+      statusUnapprovedValue: DocumentStatus.未审批,
+    })
+    this.appService = appService
+    // 初始化本地状态
+    this.bill = createEmptyNcrDocument()
+    this.details = []
+    // 建立非 Hook 的动作对象
+    const actions = createDocumentActions({
+      initialId: null,
+      onStateChange: (s) => { this.loading = !!s.loading; this.currentId = toNumericId(s.id as any); this.emit() },
+      callSave: async () => {
+        const res = await this.appService.save({
+          bill: this.bill,
+          details: this.details,
+          localPhotoEvidence: this.localPhotoEvidence,
+        })
+        if (res.clearLocalPhotoEvidence) {
+          // 上传成功：清理本地照片证据，避免后续重复上传
+          this.clearLocalPhotoEvidence()
+        }
+        return { id: res.id, code: res.code }
+      },
+      callApprove: async (id) => {
+        return this.appService.approve(Number(id), { bill: this.bill, details: this.details })
+      },
+      callUnapprove: async (id) => {
+        return this.appService.unapprove(Number(id), { bill: this.bill, details: this.details })
+      },
+      callDelete: async (id) => {
+        return this.appService.delete(Number(id))
+      },
+    })
+    // 绑定桥接：统一通过 bill.status 作为唯一状态来源
+    this.bindBridge({
+      getDocument: () => this.bill,
+      getDetails: () => this.details,
+      getStatus: () => this.currentStatus,
+      getStatusRef: () => this.currentStatus,
+      setDocument: (next) => {
+        this.bill = next
+        this.emit()
+      },
+      setDetails: (next) => { this.details = Array.isArray(next) ? next : []; this.emit() },
+      setStatus: (next) => {
+        const n = typeof next === 'number' ? next : Number(next as unknown)
+        const resolved = Number.isFinite(n) && n !== 0 ? n : DocumentStatus.未审批
+        this.bill = { ...(this.bill as any), status: resolved } as DefectiveReworkOrderDocument
+        this.emit()
+      },
+      docActions: actions,
+    })
+  }
 
-/**
- *
- * 重置单据（新建/删除成功/取消新建等场景）。
- * @remarks
- * - 基类仅重置单据/明细/ID；NCR 还需要同步清空“照片证据”，避免残留上一单的预览。\\n
- *
- */
+  /**
+   *
+   * 重置单据（新建/删除成功/取消新建等场景）。
+   * @remarks
+   * - 基类仅重置单据/明细/ID；NCR 还需要同步清空“照片证据”，避免残留上一单的预览。\\n
+   *
+   */
   public override reset(): void {
-  super.reset()
-  this.serverPhotoEvidence = []
-  this.clearLocalPhotoEvidence()
-  this.materialCode = ''
-  this.ensureAtLeastOneDetailRow()
+    super.reset()
+    this.serverPhotoEvidence = []
+    this.clearLocalPhotoEvidence()
+    this.materialCode = ''
+    this.ensureAtLeastOneDetailRow()
   }
 
-/**
- *
- * 新建（重置）单据。
- *
- */
+  /**
+   *
+   * 新建（重置）单据。
+   *
+   */
   public createNewBill(): void {
-  this.pendingDailyPlanFlowDetailPick = null
-  this.dailyPlanPickBusy = false
-  try {
-    this.reset()
-  } catch (err) {
-    console.error('[NCR] 重置单据失败:', err)
-  }
-  // 新建单据时清空照片证据，防止残留上一单的附件预览。
-  this.serverPhotoEvidence = []
-  this.clearLocalPhotoEvidence()
-  this.badProcessOptions = []
-  this.emit()
+    this.pendingDailyPlanFlowDetailPick = null
+    this.dailyPlanPickBusy = false
+    try {
+      this.reset()
+    } catch (err) {
+      console.error('[NCR] 重置单据失败:', err)
+    }
+    // 新建单据时清空照片证据，防止残留上一单的附件预览。
+    this.serverPhotoEvidence = []
+    this.clearLocalPhotoEvidence()
+    this.badProcessOptions = []
+    this.emit()
   }
 
   /**
@@ -524,12 +524,12 @@ export type SelectOption = import('../../shared/reworkFlowDetailOptions').Select
     }
   }
 
-/**
- *
- * 统一生成图片项的稳定 key（与页面 PhotoGrid 的 getPhotoKey 逻辑一致）。
- * @param item 图片项。
- *
- */
+  /**
+   *
+   * 统一生成图片项的稳定 key（与页面 PhotoGrid 的 getPhotoKey 逻辑一致）。
+   * @param item 图片项。
+   *
+   */
   private getPhotoKey(item: ErpImageItem): string {
     if (!item) return ''
     if ((item as any).id) return String((item as any).id)
@@ -637,28 +637,28 @@ export type SelectOption = import('../../shared/reworkFlowDetailOptions').Select
    * 清空本地“照片证据”，并释放可能存在的 objectURL。
    *
    */
- public clearLocalPhotoEvidence(): void {
- const prev = Array.isArray(this.localPhotoEvidence) ? this.localPhotoEvidence : []
- for (const item of prev) {
- const objUrl = (item as any)?.localObjectUrl
- if (typeof objUrl === 'string' && objUrl && typeof URL !== 'undefined' && typeof URL.revokeObjectURL === 'function') {
- try { URL.revokeObjectURL(objUrl) } catch { }
- }
- }
- this.localPhotoEvidence = []
- this.emit()
- }
+  public clearLocalPhotoEvidence(): void {
+    const prev = Array.isArray(this.localPhotoEvidence) ? this.localPhotoEvidence : []
+    for (const item of prev) {
+      const objUrl = (item as any)?.localObjectUrl
+      if (typeof objUrl === 'string' && objUrl && typeof URL !== 'undefined' && typeof URL.revokeObjectURL === 'function') {
+        try { URL.revokeObjectURL(objUrl) } catch { }
+      }
+    }
+    this.localPhotoEvidence = []
+    this.emit()
+  }
 
-/**
- *
- * 确保明细对象拥有稳定的本地 key（用于列表渲染与编辑定位）。
- * @remarks
- * - 若已存在 __localKey 则复用；\\n
- * - 若存在有效 id 则使用 id_ 前缀；\\n
- * - 否则使用 local_ 自增序列。\\n
- * @param detail 明细对象（通常为 Plain Object / DTO）。
- *
- */
+  /**
+   *
+   * 确保明细对象拥有稳定的本地 key（用于列表渲染与编辑定位）。
+   * @remarks
+   * - 若已存在 __localKey 则复用；\\n
+   * - 若存在有效 id 则使用 id_ 前缀；\\n
+   * - 否则使用 local_ 自增序列。\\n
+   * @param detail 明细对象（通常为 Plain Object / DTO）。
+   *
+   */
   private ensureDetailLocalKey(detail: any): string {
     if (!detail || typeof detail !== 'object') return ''
     const existing = typeof detail.__localKey === 'string' ? detail.__localKey.trim() : ''
@@ -707,33 +707,33 @@ export type SelectOption = import('../../shared/reworkFlowDetailOptions').Select
    * 删除明细按钮是否禁用（与编辑禁用一致）。
    *
    */
- public get disableRemoveDetail(): boolean {
-  if (this.disableDetailEdit) return true
-  const list = Array.isArray(this.details) ? this.details : []
-  return list.length <= 1
- }
+  public get disableRemoveDetail(): boolean {
+    if (this.disableDetailEdit) return true
+    const list = Array.isArray(this.details) ? this.details : []
+    return list.length <= 1
+  }
 
-/**
- *
- * 添加一条不合格记录（新增明细行）。
- *
- */
- public addDetail = (): void => {
- if (this.disableDetailEdit) return
- const next = [...(this.details ?? [])]
- const detail = createEmptyNcrDetail()
- this.ensureDetailLocalKey(detail as any)
- next.push(detail)
- this.details = next
- this.emit()
- }
+  /**
+   *
+   * 添加一条不合格记录（新增明细行）。
+   *
+   */
+  public addDetail = (): void => {
+    if (this.disableDetailEdit) return
+    const next = [...(this.details ?? [])]
+    const detail = createEmptyNcrDetail()
+    this.ensureDetailLocalKey(detail as any)
+    next.push(detail)
+    this.details = next
+    this.emit()
+  }
 
-/**
- *
- * 根据本地 key 删除一条记录。
- * @param key 本地 key。
- *
- */
+  /**
+   *
+   * 根据本地 key 删除一条记录。
+   * @param key 本地 key。
+   *
+   */
   public removeDetail = (key: string): void => {
     if (this.disableDetailEdit) return
     const current = Array.isArray(this.details) ? this.details : []
@@ -914,27 +914,27 @@ export type SelectOption = import('../../shared/reworkFlowDetailOptions').Select
    * 刷新：若存在当前 ID，则重新读取表头+明细，并同步加载附件。
    *
    */
- public async handleRefresh(): Promise<void> {
- const id = toNumericId((this as any).currentId)
- if (!id) return
- await this.refresh(id)
- await this.loadServerPhotoEvidence(id)
- await this.loadProcessOptions()
- }
+  public async handleRefresh(): Promise<void> {
+    const id = toNumericId((this as any).currentId)
+    if (!id) return
+    await this.refresh(id)
+    await this.loadServerPhotoEvidence(id)
+    await this.loadProcessOptions()
+  }
 
-/**
- *
- * 删除当前单据（对外别名）。
- *
- */
- public async handleDeleteBill(): Promise<void> { await this.handleDelete() }
+  /**
+   *
+   * 删除当前单据（对外别名）。
+   *
+   */
+  public async handleDeleteBill(): Promise<void> { await this.handleDelete() }
 
-/**
- *
- * 统一非负整数转换（供 NumberInput 使用）。
- * @param v 输入值（number 或空字符串）。
- *
- */
+  /**
+   *
+   * 统一非负整数转换（供 NumberInput 使用）。
+   * @param v 输入值（number 或空字符串）。
+   *
+   */
   public toNonNegInt(v: number | '' | undefined): number {
     const n = typeof v === 'number' ? v : Number(v)
     if (!Number.isFinite(n) || n < 0) return 0
@@ -946,68 +946,68 @@ export type SelectOption = import('../../shared/reworkFlowDetailOptions').Select
    * 模拟扫码：快速填充示例数据。
    *
    */
- public handleMockScan = (): void => {
- try {
- const d1 = createEmptyNcrDetail()
- d1.Adversesituation = '端子压接裂纹'
- const d2 = createEmptyNcrDetail()
- d2.Adversesituation = '外观刮伤'
- const mockDetails: DefectiveReworkOrderDetail[] = [d1, d2]
- const patch: Partial<DefectiveReworkOrderDocument> = {
- Employeeid: 1,
- PreCmpBQty: 1200,
- TypeofWorkid: 101,
- InnerKey: 'NCR-TEST-001',
- }
- this.updateBill(patch)
- this.details = mockDetails
- this.emit()
- } catch (err) {
- console.error('[NCR] 模拟扫码失败:', err)
- }
- }
+  public handleMockScan = (): void => {
+    try {
+      const d1 = createEmptyNcrDetail()
+      d1.Adversesituation = '端子压接裂纹'
+      const d2 = createEmptyNcrDetail()
+      d2.Adversesituation = '外观刮伤'
+      const mockDetails: DefectiveReworkOrderDetail[] = [d1, d2]
+      const patch: Partial<DefectiveReworkOrderDocument> = {
+        Employeeid: 1,
+        PreCmpBQty: 1200,
+        TypeofWorkid: 101,
+        InnerKey: 'NCR-TEST-001',
+      }
+      this.updateBill(patch)
+      this.details = mockDetails
+      this.emit()
+    } catch (err) {
+      console.error('[NCR] 模拟扫码失败:', err)
+    }
+  }
 
-/**
- *
- * 扫码/手动输入条码：触发扫码解析并执行对应动作。
- * @remarks
- * - 允许输入形如 `id:123` 或纯数字 ID，表示直接打开指定 NCR 单据。\\n
- * - 其它文本按 handleScan 逻辑进行解析（职员码 / 日计划码 / 不支持提示）。\\n
- *
- */
- public async handleScanOrInput(): Promise<void> {
- if (typeof window === 'undefined') return
- try {
- const input = window.prompt('请输入条码/二维码内容或单据ID', '')
- if (input == null) return
- const code = String(input).trim()
- if (!code) { try { toast.warning('请输入有效内容') } catch { }; return }
- const m = code.match(/^(?:id\s*[:：]\s*)?(\d+)$/i)
- if (m) {
- const ncrId = Number(m[1])
- if (Number.isFinite(ncrId) && ncrId > 0) {
- const opened = await this.openById(ncrId)
- if (opened) { try { toast.success(`已打开NCR单据：${ncrId}`) } catch { } } else { try { toast.error('未能打开指定NCR单据') } catch { } }
- return
- }
- }
- await this.handleScan(code)
- } catch (err) {
- console.error('[NCR] 手动输入/扫码失败:', err)
- try { toast.error('扫码处理失败，请稍后重试') } catch { }
- }
- }
+  /**
+   *
+   * 扫码/手动输入条码：触发扫码解析并执行对应动作。
+   * @remarks
+   * - 允许输入形如 `id:123` 或纯数字 ID，表示直接打开指定 NCR 单据。\\n
+   * - 其它文本按 handleScan 逻辑进行解析（职员码 / 日计划码 / 不支持提示）。\\n
+   *
+   */
+  public async handleScanOrInput(): Promise<void> {
+    if (typeof window === 'undefined') return
+    try {
+      const input = window.prompt('请输入条码/二维码内容或单据ID', '')
+      if (input == null) return
+      const code = String(input).trim()
+      if (!code) { try { toast.warning('请输入有效内容') } catch { }; return }
+      const m = code.match(/^(?:id\s*[:：]\s*)?(\d+)$/i)
+      if (m) {
+        const ncrId = Number(m[1])
+        if (Number.isFinite(ncrId) && ncrId > 0) {
+          const opened = await this.openById(ncrId)
+          if (opened) { try { toast.success(`已打开NCR单据：${ncrId}`) } catch { } } else { try { toast.error('未能打开指定NCR单据') } catch { } }
+          return
+        }
+      }
+      await this.handleScan(code)
+    } catch (err) {
+      console.error('[NCR] 手动输入/扫码失败:', err)
+      try { toast.error('扫码处理失败，请稍后重试') } catch { }
+    }
+  }
 
-/**
- *
- * 处理扫码文本（核心解析入口）。
- * @remarks
- * - 职员条码：设置当前单据的检验员（Employeeid）；\\n
- * - 日计划条码：调用后端生成新的不合格返工单并打开；\\n
- * - 其它：提示暂不支持。\\n
- * @param text 扫码/输入文本。
- *
- */
+  /**
+   *
+   * 处理扫码文本（核心解析入口）。
+   * @remarks
+   * - 职员条码：设置当前单据的检验员（Employeeid）；\\n
+   * - 日计划条码：调用后端生成新的不合格返工单并打开；\\n
+   * - 其它：提示暂不支持。\\n
+   * @param text 扫码/输入文本。
+   *
+   */
   public async handleScan(text: string): Promise<NcrScanExecuteResult> {
     const result = await this.appService.executeScan(text, {
       inspectorEmployeeId: toNumericId((this.bill as any)?.Employeeid),
@@ -1362,78 +1362,79 @@ export type SelectOption = import('../../shared/reworkFlowDetailOptions').Select
    * 加载下拉选项：检验员。
    *
    */
- public async loadInspectorOptions(): Promise<void> {
- try {
- const rows = await fetchActiveEmployees()
- this.inspectorOptions = (rows ?? []).map((r: any) => ({
- label: String(r?.name ?? ''),
- value: String(r?.id ?? ''),
- }))
- this.emit()
- } catch {
- this.inspectorOptions = []
- this.emit()
- }
- }
-
-/**
- *
- * 加载下拉选项：工种/返工工序。
- * @remarks
- * - 工种：取全部工种（TypeofWork）；\\n
- * - 返工工序：对齐 ERPClient，取“上游祖先流程卡”的工序明细列表，且返工字段保存的是明细 id。\\n
- *
- */
-  public async loadProcessOptions(): Promise<void> {
-  this.processOptionsFetchSeq += 1
-  const seq = this.processOptionsFetchSeq
-  const docForOptions = this.bill as any
-   try {
-     const opts = await fetchWorkTypes()
-     if (seq !== this.processOptionsFetchSeq) return
-     const basic = (opts ?? []).map((o: any) => ({ label: String(o?.label ?? ''), value: String(o?.value ?? '') }))
-     const bad = await fetchReworkFlowDetailOptionsFromUpstreamFlowCard({
-       documentBase: docForOptions,
-       workTypeOptions: basic,
-       selectedFlowDetailIds: [
-         docForOptions?.ReworkTypeofWorkid ?? docForOptions?.reworkTypeofWorkid,
-         docForOptions?.ReworkTypeofWork2id ?? docForOptions?.reworkTypeofWork2id,
-       ],
-     })
-     if (seq !== this.processOptionsFetchSeq) return
-     this.processOptions = basic
-     this.badProcessOptions = bad
-
-     // 与 ERPClient 一致：若返工工序尚未选择，则尝试从上游祖先流程卡明细自动带入。
-     const currentReworkId = toNumericId((docForOptions as any)?.ReworkTypeofWorkid ?? (docForOptions as any)?.reworkTypeofWorkid)
-     if (!currentReworkId) {
-       const autoFlowDetailId = await resolveUpstreamFlowDetailIdFromDocumentBase(docForOptions as any)
-       if (seq !== this.processOptionsFetchSeq) return
-       if (autoFlowDetailId && autoFlowDetailId > 0) {
-         this.bill = { ...(this.bill as any), ReworkTypeofWorkid: autoFlowDetailId } as any
-       }
-     }
-     this.emit()
-   } catch {
-     if (seq !== this.processOptionsFetchSeq) return
-     this.badProcessOptions = []
-     this.processOptions = []
-     this.emit()
-   }
+  public async loadInspectorOptions(): Promise<void> {
+    try {
+      const rows = await fetchActiveEmployees()
+      this.inspectorOptions = (rows ?? []).map((r: any) => ({
+        label: String(r?.name ?? ''),
+        value: String(r?.id ?? ''),
+      }))
+      this.emit()
+    } catch {
+      this.inspectorOptions = []
+      this.emit()
+    }
   }
 
-/**
- *
- * 是否禁用明细编辑（冻结/结案/作废/已审批）。
- *
- */
- public get disableDetailEdit(): boolean { return this.getDisableDetailEdit(this.currentStatus) }
+  /**
+   *
+   * 加载下拉选项：工种/返工工序。
+   * @remarks
+   * - 工种：取全部工种（TypeofWork）；\\n
+   * - 返工工序：对齐 ERPClient，取“上游祖先流程卡”的工序明细列表，且返工字段保存的是明细 id。\\n
+   *
+   */
+  public async loadProcessOptions(): Promise<void> {
+    this.processOptionsFetchSeq += 1
+    const seq = this.processOptionsFetchSeq
+    const docForOptions = this.bill as any
+    try {
+      const opts = await fetchWorkTypes()
+      if (seq !== this.processOptionsFetchSeq) return
+      const basic = (opts ?? []).map((o: any) => ({ label: String(o?.label ?? ''), value: String(o?.value ?? '') }))
+      const bad = await fetchReworkFlowDetailOptionsFromUpstreamFlowCard({
+        documentBase: docForOptions,
+        workTypeOptions: basic,
+        selectedFlowDetailIds: [
+          docForOptions?.ReworkTypeofWorkid ?? docForOptions?.reworkTypeofWorkid,
+          docForOptions?.ReworkTypeofWork2id ?? docForOptions?.reworkTypeofWork2id,
+        ],
+      })
+      if (seq !== this.processOptionsFetchSeq) return
+      this.processOptions = basic
+      this.badProcessOptions = bad
 
-/**
- *
- * 审批按钮是否禁用（便于直接绑定到按钮）。
- *
- */
+      // 与 ERPClient 一致：若返工工序尚未选择，则尝试从上游祖先流程卡明细自动带入。
+      // 为了改为不自动选择返工工序, 先注释自动选择逻辑
+      //  const currentReworkId = toNumericId((docForOptions as any)?.ReworkTypeofWorkid ?? (docForOptions as any)?.reworkTypeofWorkid)
+      //  if (!currentReworkId) {
+      //    const autoFlowDetailId = await resolveUpstreamFlowDetailIdFromDocumentBase(docForOptions as any)
+      //    if (seq !== this.processOptionsFetchSeq) return
+      //    if (autoFlowDetailId && autoFlowDetailId > 0) {
+      //      this.bill = { ...(this.bill as any), ReworkTypeofWorkid: autoFlowDetailId } as any
+      //    }
+      //  }
+      this.emit()
+    } catch {
+      if (seq !== this.processOptionsFetchSeq) return
+      this.badProcessOptions = []
+      this.processOptions = []
+      this.emit()
+    }
+  }
+
+  /**
+   *
+   * 是否禁用明细编辑（冻结/结案/作废/已审批）。
+   *
+   */
+  public get disableDetailEdit(): boolean { return this.getDisableDetailEdit(this.currentStatus) }
+
+  /**
+   *
+   * 审批按钮是否禁用（便于直接绑定到按钮）。
+   *
+   */
   public get approveDisabled(): boolean {
     return this.loading || this.actionBusy || this.getStatusLocks(this.currentStatus).approveDisabled
   }
