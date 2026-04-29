@@ -82,10 +82,10 @@ export const CategoryNav: FC<CategoryNavProps> = ({
               type="button"
               onClick={() => handleCategoryClick(category)}
               aria-current={activeCategory === category ? "true" : undefined}
-              className={`w-full px-[var(--space-3)] py-[var(--space-3)] text-left text-sm font-medium rounded-[calc(var(--radius-md)-2px)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+              className={`w-full px-[var(--space-3)] py-[var(--space-3)] text-left text-sm font-medium rounded-[var(--radius-sm)] transition-colors duration-200 border-l-[3px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
                 activeCategory === category
-                  ? "text-[var(--color-accent)] bg-[color-mix(in_srgb,var(--color-accent)_14%,transparent)]"
-                  : "text-muted-foreground hover:bg-[color-mix(in_srgb,var(--color-fg)_8%,transparent)] hover:text-foreground"
+                  ? "border-l-[var(--color-accent)] text-[var(--color-accent)] bg-[color-mix(in_srgb,var(--color-accent)_14%,transparent)]"
+                  : "border-l-transparent text-muted-foreground hover:bg-[color-mix(in_srgb,var(--color-fg)_8%,transparent)] hover:text-foreground"
               }`}
             >
               {category}
@@ -96,4 +96,3 @@ export const CategoryNav: FC<CategoryNavProps> = ({
     </nav>
   );
 };
-

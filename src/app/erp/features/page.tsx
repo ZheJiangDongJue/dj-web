@@ -42,9 +42,9 @@ const buildFunctionItems = (moduleId: string): FunctionItem[] => {
 /**
  *
  * ERP 分类页
- * 需求：移动端导航从“抽屉”改为“左侧常驻”。
+ * 需求：移动端导航从"抽屉"改为"左侧常驻"。
  * 实现：取消移动端抽屉与尺寸监听逻辑，始终渲染左侧导航列；右侧为功能网格区域。
- * 说明：布局遵循“布局类与主题类样式分离”的项目规范，宽度随断点渐进增强。
+ * 说明：布局遵循"布局类与主题类样式分离"的项目规范，宽度随断点渐进增强。
  *
  */
 export default function ErpCategoryPage() {
@@ -96,20 +96,29 @@ export default function ErpCategoryPage() {
   };
 
   return (
-    <MainFill aria-label="分类" className="flex-row overflow-hidden">
-      {/* 左侧导航常驻（含移动端）。宽度随断点渐进增强 */}
-      <div className="block w-[100px] flex-shrink-0 border-r border-neutral-200/70 bg-white dark:border-neutral-800 sm:w-[100px] md:w-[120px] lg:w-[160px]">
-        <CategoryNav
-          categories={categoryNames}
-          activeCategory={activeCategory}
-          onCategoryChange={handleCategorySelect}
-        />
-      </div>
+    <>
+      {/* 键盘快捷键：跳至主内容区域 */}
+      <a
+        href="#erp-features-main"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-[var(--space-3)] focus:top-[var(--space-3)] focus:z-50 focus:rounded-[var(--radius-md)] focus:bg-[var(--color-accent)] focus:px-[var(--space-3)] focus:py-[var(--space-2)] focus:text-white focus:no-underline focus:outline-none"
+      >
+        跳至主内容
+      </a>
+      <MainFill aria-label="分类" className="flex-row overflow-hidden">
+        {/* 左侧导航常驻（含移动端）。宽度随断点渐进增强 */}
+        <div className="block w-[100px] flex-shrink-0 border-r border-[var(--color-border)] bg-[var(--color-bg)] sm:w-[100px] md:w-[120px] lg:w-[160px]">
+          <CategoryNav
+            categories={categoryNames}
+            activeCategory={activeCategory}
+            onCategoryChange={handleCategorySelect}
+          />
+        </div>
 
-      {/* 右侧功能组区域 */}
-      <div className="flex-1 overflow-hidden">
-        <FunctionGrid title={activeCategory} items={functionItems} onItemSelect={handleItemSelect} />
-      </div>
-    </MainFill>
+        {/* 右侧功能组区域 */}
+        <div id="erp-features-main" className="flex-1 overflow-hidden">
+          <FunctionGrid title={activeCategory} items={functionItems} onItemSelect={handleItemSelect} />
+        </div>
+      </MainFill>
+    </>
   );
 }

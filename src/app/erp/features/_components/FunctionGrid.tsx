@@ -68,6 +68,9 @@ export const FunctionGrid: FC<FunctionGridProps> = ({
             </svg>
             <h3 className="mt-2 text-sm font-medium text-foreground">暂无功能项</h3>
             <p className="mt-1 text-sm text-muted-foreground">该分类下暂无可用的功能模块</p>
+            <p className="mt-1 text-xs text-[color-mix(in_srgb,var(--color-fg)_60%,transparent)]">
+              如需使用相关功能，请联系系统管理员配置权限
+            </p>
           </div>
         ) : (
           <div className="grid grid-cols-3 gap-[var(--space-3)] sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
@@ -76,7 +79,7 @@ export const FunctionGrid: FC<FunctionGridProps> = ({
                 key={item.id}
                 type="button"
                 onClick={() => onItemSelect(item)}
-                className="flex flex-col items-center justify-center t-card rounded-[var(--radius-md)] p-[var(--space-3)] text-center transition-shadow hover:shadow-[var(--shadow-2)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="flex flex-col items-center justify-center t-card rounded-[var(--radius-md)] p-[var(--space-3)] text-center cursor-pointer transition-[box-shadow,background-color] duration-200 hover:shadow-[var(--shadow-2)] hover:bg-[color-mix(in_srgb,var(--color-accent)_4%,var(--color-surface))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 aria-label={item.name}
               >
                 <div className="mb-2 flex h-10 w-10 items-center justify-center rounded-full bg-[var(--color-surface-field)] sm:h-12 sm:w-12">

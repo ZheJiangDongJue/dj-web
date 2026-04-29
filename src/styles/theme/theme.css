@@ -6,6 +6,8 @@
   --color-bg: #ffffff;
   --color-fg: #0a0a0a;
   --color-surface: #f7f9fc;
+  /* 字段表面层比卡片表面略深，形成视觉层次 */
+  --color-surface-field: #eef1f6;
   --color-border: rgba(0,0,0,0.08);
   /* Skeleton 颜色（可按需与其它主题不同权重） */
   --color-skeleton: color-mix(in srgb, var(--color-surface) 88%, var(--color-fg) 12%);
