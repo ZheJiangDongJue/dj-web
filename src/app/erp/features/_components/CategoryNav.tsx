@@ -21,6 +21,19 @@ type CategoryNavProps = {
   onCategoryChange: (category: string) => void;
   isMobile?: boolean;
   onMobileClose?: () => void;
+  /**
+   *
+   * 空状态标题（categories 为空时显示）。
+   * - 例如：权限加载中/暂无可用模块/权限加载失败等。
+   *
+   */
+  emptyTitle?: string;
+  /**
+   *
+   * 空状态描述（categories 为空时显示）。
+   *
+   */
+  emptyDescription?: string;
 };
 
 /**
@@ -33,7 +46,9 @@ export const CategoryNav: FC<CategoryNavProps> = ({
   activeCategory,
   onCategoryChange,
   isMobile = false,
-  onMobileClose
+  onMobileClose,
+  emptyTitle,
+  emptyDescription,
 }) => {
   /**
    *
@@ -75,24 +90,33 @@ export const CategoryNav: FC<CategoryNavProps> = ({
           )}
         </div>
       </div>
-      <ul className="flex-1 overflow-y-auto py-[var(--space-2)]">
-        {categories.map((category) => (
-          <li key={category} className="w-full">
-            <button
-              type="button"
-              onClick={() => handleCategoryClick(category)}
-              aria-current={activeCategory === category ? "true" : undefined}
-              className={`w-full px-[var(--space-3)] py-[var(--space-3)] text-left text-sm font-medium rounded-[var(--radius-sm)] transition-colors duration-200 border-l-[3px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
-                activeCategory === category
-                  ? "border-l-[var(--color-accent)] text-[var(--color-accent)] bg-[color-mix(in_srgb,var(--color-accent)_14%,transparent)]"
-                  : "border-l-transparent text-muted-foreground hover:bg-[color-mix(in_srgb,var(--color-fg)_8%,transparent)] hover:text-foreground"
-              }`}
-            >
-              {category}
-            </button>
-          </li>
-        ))}
-      </ul>
+      {categories.length === 0 ? (
+        <div className="flex-1 flex items-center justify-center px-[var(--space-3)] py-[var(--space-4)] text-center">
+          <div>
+            <div className="text-sm font-medium text-foreground">{emptyTitle ?? "暂无可用模块"}</div>
+            <div className="mt-1 text-xs text-muted-foreground">{emptyDescription ?? "请联系管理员配置页面权限"}</div>
+          </div>
+        </div>
+      ) : (
+        <ul className="flex-1 overflow-y-auto py-[var(--space-2)]">
+          {categories.map((category) => (
+            <li key={category} className="w-full">
+              <button
+                type="button"
+                onClick={() => handleCategoryClick(category)}
+                aria-current={activeCategory === category ? "true" : undefined}
+                className={`w-full px-[var(--space-3)] py-[var(--space-3)] text-left text-sm font-medium rounded-[var(--radius-sm)] transition-colors duration-200 border-l-[3px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                  activeCategory === category
+                    ? "border-l-[var(--color-accent)] text-[var(--color-accent)] bg-[color-mix(in_srgb,var(--color-accent)_14%,transparent)]"
+                    : "border-l-transparent text-muted-foreground hover:bg-[color-mix(in_srgb,var(--color-fg)_8%,transparent)] hover:text-foreground"
+                }`}
+              >
+                {category}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
     </nav>
   );
 };

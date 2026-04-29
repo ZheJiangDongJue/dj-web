@@ -1,5 +1,13 @@
 import ClientPage from './ClientPage'
 import { Suspense } from 'react'
+import { ERP_PAGE_NAME } from '@/lib/erp/page-names'
+
+/**
+ *
+ * PageName：用于行为角色权限系统的页面标识。
+ *
+ */
+export const pageName = ERP_PAGE_NAME.FAI
 
 /**
  *
@@ -23,4 +31,3 @@ export default async function Page({
     </Suspense>
   )
 }
-

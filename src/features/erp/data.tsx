@@ -1,5 +1,6 @@
 import type { ErpGroup } from "../../types/erp";
 import type { FC } from "react";
+import { ERP_PAGE_NAME } from "@/lib/erp/page-names";
 
 /**
  *
@@ -84,9 +85,9 @@ export const erpGroupsByModule: Record<string, ErpGroup[]> = {
       id: "quality-main",
       name: "质量管理",
       features: [
-        { id: "fai", name: "首件检验", icon: TileIcon },
-        { id: "fqc", name: "末道检验", icon: TileIcon },
-        { id: "ncr", name: "不合格纪录单", icon: TileIcon },
+        { id: "fai", name: "首件检验", pageName: ERP_PAGE_NAME.FAI, icon: TileIcon },
+        { id: "fqc", name: "末道检验", pageName: ERP_PAGE_NAME.FQC, icon: TileIcon },
+        { id: "ncr", name: "不合格纪录单", pageName: ERP_PAGE_NAME.NCR, icon: TileIcon },
       ],
     },
   ],
