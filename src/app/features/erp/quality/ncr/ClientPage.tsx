@@ -1,6 +1,6 @@
 "use client"
 import { useFeaturesPageTitle } from "@/app/features/_components"
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ChangeEvent } from "react"
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ChangeEvent } from "react"
 import { useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
 import styles from './ncr.module.css'
@@ -28,6 +28,10 @@ import authFetch from '@/lib/auth/interceptor'
 import type { DbChangedPackResult } from '@/types/api'
 
 type DeleteRemotePhotoResult = 'success' | 'not_found' | 'error' | 'skip'
+
+// PhotoGrid 会维护较多内部状态（缩略图缓存/覆盖层预览等）。
+// 表头“实时联动”会频繁触发 VM emit，因此这里对 PhotoGrid 做 memo，避免在 props 未变化时重复渲染。
+const MemoPhotoGrid = memo(PhotoGrid)
 
 /**
  *
@@ -193,6 +197,21 @@ export default function ClientPage({
    */
   const [addPhotoMenuOpen, setAddPhotoMenuOpen] = useState(false)
   const [addPhotoMenuBusy, setAddPhotoMenuBusy] = useState<null | 'camera' | 'album'>(null)
+
+  const getDetailKey = useCallback(
+    (detail: any) => vm.getDetailKey(detail),
+    [vm],
+  )
+
+  const handleChangeDetailReason = useCallback(
+    (detailKey: string, reason: string) => vm.changeDetailReason(detailKey, reason),
+    [vm],
+  )
+
+  const handleRemoveDetail = useCallback(
+    (detailKey: string) => vm.removeDetail(detailKey),
+    [vm],
+  )
 
   // 首次进入：新建空白单据 + 载入下拉选项
   useEffect(() => {
@@ -562,31 +581,13 @@ export default function ClientPage({
                 不合格记录
               </Label>
             </div>
-            <DetailsCardList
-              items={vm.details}
-              getKey={(it) => vm.getDetailKey(it)}
-              className="flex-1 space-y-2 overflow-y-auto overflow-x-hidden min-h-0"
-              itemClassName="t-card w-full p-2"
-              renderItem={({ item, index }) => (
-                <div className="grid grid-cols-[max-content_1fr_28px] items-center gap-2">
-                  <Label className="text-[13px]">{`记录${index + 1}`}</Label>
-                  <Input
-                    value={item.Adversesituation ?? ''} // 兜底空串，避免受控/非受控切换告警
-                    onChange={(e) => vm.changeDetailReason(vm.getDetailKey(item), e.target.value)}
-                    disabled={vm.disableDetailEdit}
-                    readOnly={vm.disableDetailEdit}
-                    className="text-[13px]"
-                    style={shortInputStyle}
-                    aria-label={`第${index + 1}行-记录`}
-                  />
-                  <CloseIconButton
-                    ariaLabel="删除明细"
-                    onClick={vm.disableRemoveDetail ? undefined : () => vm.removeDetail(vm.getDetailKey(item))}
-                    title="删除"
-                    disabled={vm.disableRemoveDetail as any}
-                  />
-                </div>
-              )} 
+            <NcrDetailsSection
+              details={vm.details}
+              disableDetailEdit={vm.disableDetailEdit}
+              disableRemoveDetail={vm.disableRemoveDetail}
+              getDetailKey={getDetailKey}
+              onChangeDetailReason={handleChangeDetailReason}
+              onRemoveDetail={handleRemoveDetail}
             />
           </section>
 
@@ -594,7 +595,7 @@ export default function ClientPage({
           <section className="flex flex-col min-h-0 overflow-hidden">
             <Label className="text-[12px] opacity-70 mb-1 shrink-0">照片证据</Label>
             <div className="flex-1 overflow-y-auto overflow-x-hidden">
-              <PhotoGrid
+              <MemoPhotoGrid
                 photos={mergedPhotos}
                 onAdd={handleAddPhoto}
                 readOnly={vm.disableDetailEdit}
@@ -635,6 +636,61 @@ export default function ClientPage({
     </>
   )
 }
+
+/**
+ *
+ * NCR 明细区（性能敏感）。
+ * - 表头“不合格数”实时联动会频繁触发 VM emit；此处通过 memo 避免明细列表在“仅表头变更”时重复渲染。
+ * - 仅当 details 引用变化或禁用状态变化时才重渲染。
+ *
+ */
+const NcrDetailsSection = memo(function NcrDetailsSection({
+  details,
+  disableDetailEdit,
+  disableRemoveDetail,
+  getDetailKey,
+  onChangeDetailReason,
+  onRemoveDetail,
+}: {
+  details: any[]
+  disableDetailEdit: boolean
+  disableRemoveDetail: boolean
+  getDetailKey: (detail: any) => string
+  onChangeDetailReason: (detailKey: string, reason: string) => void
+  onRemoveDetail: (detailKey: string) => void
+}) {
+  return (
+    <DetailsCardList
+      items={details}
+      getKey={(it) => getDetailKey(it)}
+      className="flex-1 space-y-2 overflow-y-auto overflow-x-hidden min-h-0"
+      itemClassName="t-card w-full p-2"
+      renderItem={({ item, index }) => {
+        const key = getDetailKey(item)
+        return (
+          <div className="grid grid-cols-[max-content_1fr_28px] items-center gap-2">
+            <Label className="text-[13px]">{`记录${index + 1}`}</Label>
+            <Input
+              value={(item as any).Adversesituation ?? ''} // 兜底空串，避免受控/非受控切换告警
+              onChange={(e) => onChangeDetailReason(key, e.target.value)}
+              disabled={disableDetailEdit}
+              readOnly={disableDetailEdit}
+              className="text-[13px]"
+              style={shortInputStyle}
+              aria-label={`第${index + 1}行-记录`}
+            />
+            <CloseIconButton
+              ariaLabel="删除明细"
+              onClick={disableRemoveDetail ? undefined : () => onRemoveDetail(key)}
+              title="删除"
+              disabled={disableRemoveDetail as any}
+            />
+          </div>
+        )
+      }}
+    />
+  )
+})
 
 /**
  *
@@ -842,6 +898,7 @@ function HeaderSection({
         <NumberInput
           value={view.NotPassBQty ?? 0}
           onValueChange={onNgQtyChange}
+          onValueChangeThrottleMs={50}
           onChange={onNgQtyChange}
           className="text-[13px]"
           ariaLabel="不合格数"

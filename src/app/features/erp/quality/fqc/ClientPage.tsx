@@ -1,6 +1,6 @@
 'use client'
 import { useFeaturesPageTitle } from '@/app/features/_components'
-import { useCallback, useEffect, useId, useRef, type CSSProperties } from 'react'
+import { memo, useCallback, useEffect, useId, useRef, type CSSProperties } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
 import { Input } from '@/components/ui/input'
@@ -184,6 +184,24 @@ function FqcBody({ rowGap, initialScanCode }: { rowGap: number; initialScanCode?
     [vm.processOptions],
   )
 
+  const detailItemClassName = [
+    't-card w-full p-2',
+    vm.getDetailCardBorderClass(vm.status),
+  ]
+    .filter(Boolean)
+    .join(' ')
+
+  const handleRemoveDetailAt = useCallback(
+    (rowIndex: number) => vm.removeDetailAt(rowIndex),
+    [vm],
+  )
+
+  const handleSetMeasureAtRow = useCallback(
+    (rowIndex: number, measureIndex: number, v: number | '') =>
+      vm.setMeasureAtRow(rowIndex, measureIndex, v),
+    [vm],
+  )
+
   return (
     <>
       <FlowDetailPickDialog
@@ -211,7 +229,7 @@ function FqcBody({ rowGap, initialScanCode }: { rowGap: number; initialScanCode?
             </div>
             <HeaderDocument
               rowGap={rowGap}
-              registerRequired={(key, registration) => vm.registerRequired(key, registration)}
+              registerRequired={vm.registerRequired}
               bill={vm.bill}
               status={vm.status}
               materialCode={vm.materialCode}
@@ -228,112 +246,15 @@ function FqcBody({ rowGap, initialScanCode }: { rowGap: number; initialScanCode?
           </>
         )}
         details={(
-          <DetailsCardList
-            items={vm.details}
-            getKey={(_, index) => index}
-            itemClassName={[
-              't-card w-full p-2',
-              vm.getDetailCardBorderClass(vm.status),
-            ]
-              .filter(Boolean)
-              .join(' ')}
-            renderItem={({ item, index }) => {
-              const enabledCount = vm.parseMeasureFrequency(item.Frequency)
-              return (
-                <>
-                  <div className="mb-2 flex items-center justify-between">
-                    <div className="text-[14px] font-medium">{item.ProjectName}</div>
-                    <CloseIconButton
-                      ariaLabel="删除明细"
-                      onClick={() => vm.removeDetailAt(index)}
-                      disabled={vm.disableRemoveDetail}
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-[26px_1fr_26px_1fr] items-center gap-x-[6px] gap-y-[6px]">
-                    <Label className="text-[12px]">要求</Label>
-                    <Input
-                      value={toDisplayStr(item.Content)}
-                      readOnly
-                      disabled
-                      className="text-[13px]"
-                      style={{ height: '25px', minHeight: '25px', paddingInline: '4px' }}
-                    />
-                    <Label className="text-[12px]">方法</Label>
-                    <Input
-                      value={toDisplayStr(item.Method)}
-                      readOnly
-                      disabled
-                      className="text-[13px]"
-                      style={{ height: '25px', minHeight: '25px', paddingInline: '4px' }}
-                    />
-                  </div>
-
-                  <div className="mt-2 grid grid-cols-[auto_minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-x-[6px] gap-y-[6px] sm:grid-cols-[26px_58px_26px_58px_26px_58px_26px_1fr]">
-                    <Label className="text-[12px]">频率</Label>
-                    <Input
-                      value={toDisplayStr(item.Frequency)}
-                      readOnly
-                      disabled
-                      className="text-[13px]"
-                      style={{ height: '25px', minHeight: '25px', paddingInline: '4px' }}
-                    />
-                    <Label className="text-[12px]">上限</Label>
-                    <Input
-                      value={toDisplayStr(item.UpQValue)}
-                      readOnly
-                      disabled
-                      className="text-[13px]"
-                      style={{ height: '25px', minHeight: '25px', paddingInline: '4px' }}
-                    />
-                    <Label className="text-[12px]">下限</Label>
-                    <Input
-                      value={toDisplayStr(item.DownQValue)}
-                      readOnly
-                      disabled
-                      className="text-[13px]"
-                      style={{ height: '25px', minHeight: '25px', paddingInline: '4px' }}
-                    />
-                    <Label className="text-[12px]">对比</Label>
-                    <Input
-                      value={toDisplayStr(item.CmpQValue)}
-                      readOnly
-                      disabled
-                      className="text-[13px]"
-                      style={{ height: '25px', minHeight: '25px', paddingInline: '4px' }}
-                    />
-                  </div>
-
-                  <div className="mt-2 grid grid-cols-[auto_repeat(5,minmax(0,1fr))] items-center gap-x-[6px] sm:grid-cols-[50px_repeat(5,58px)]">
-                    <Label className="text-[12px]">实测1~5</Label>
-                    {[
-                      item.MeasuredRecord1,
-                      item.MeasuredRecord2,
-                      item.MeasuredRecord3,
-                      item.MeasuredRecord4,
-                      item.MeasuredRecord5,
-                    ].map((s, i) => (
-                      <NumberInput
-                        key={i}
-                        value={toNumOrEmpty(s)}
-                        onValueChange={(nv) => vm.setMeasureAtRow(index, i, nv)}
-                        onChange={(nv) => vm.setMeasureAtRow(index, i, nv)}
-                        disabled={i >= enabledCount || vm.disableDetailEdit}
-                        className="text-right"
-                        style={{ height: '25px', minHeight: '25px', paddingInline: '4px' }}
-                        ariaLabel={`明细第${index + 1}行-实测${i + 1}`}
-                      />
-                    ))}
-                  </div>
-                  <DetailRequiredRegistrar
-                    rowIndex={index}
-                    enabledCount={enabledCount}
-                    registerRequired={(key, registration) => vm.registerRequired(key, registration)}
-                    details={vm.details}
-                  />
-                </>
-              )
-            }}
+          <FqcDetailsSection
+            details={vm.details}
+            itemClassName={detailItemClassName}
+            disableDetailEdit={vm.disableDetailEdit}
+            disableRemoveDetail={vm.disableRemoveDetail}
+            parseMeasureFrequency={vm.parseMeasureFrequency}
+            registerRequired={vm.registerRequired}
+            onRemoveDetailAt={handleRemoveDetailAt}
+            onSetMeasureAtRow={handleSetMeasureAtRow}
           />
         )}
         footer={(
@@ -351,6 +272,138 @@ function FqcBody({ rowGap, initialScanCode }: { rowGap: number; initialScanCode?
     </>
   )
 }
+
+/**
+ *
+ * 末道检验明细区（性能敏感）。
+ * - 表头“边输边联动”会频繁触发 VM emit；此处通过 memo 避免明细列表在“仅表头变更”时重复渲染。
+ * - 仅当 details 引用变化或可编辑状态变化时才重渲染。
+ *
+ */
+const FqcDetailsSection = memo(function FqcDetailsSection({
+  details,
+  itemClassName,
+  disableDetailEdit,
+  disableRemoveDetail,
+  parseMeasureFrequency,
+  registerRequired,
+  onRemoveDetailAt,
+  onSetMeasureAtRow,
+}: {
+  details: any[]
+  itemClassName: string
+  disableDetailEdit: boolean
+  disableRemoveDetail: boolean
+  parseMeasureFrequency: (freq: unknown) => number
+  registerRequired: (key: string, registration: RequiredFieldRegistration<unknown>) => () => void
+  onRemoveDetailAt: (rowIndex: number) => void
+  onSetMeasureAtRow: (rowIndex: number, measureIndex: number, v: number | '') => void
+}) {
+  return (
+    <DetailsCardList
+      items={details}
+      getKey={(_, index) => index}
+      itemClassName={itemClassName}
+      renderItem={({ item, index }) => {
+        const enabledCount = parseMeasureFrequency((item as any).Frequency)
+        return (
+          <>
+            <div className="mb-2 flex items-center justify-between">
+              <div className="text-[14px] font-medium">{(item as any).ProjectName}</div>
+              <CloseIconButton
+                ariaLabel="删除明细"
+                onClick={() => onRemoveDetailAt(index)}
+                disabled={disableRemoveDetail}
+              />
+            </div>
+
+            <div className="grid grid-cols-[26px_1fr_26px_1fr] items-center gap-x-[6px] gap-y-[6px]">
+              <Label className="text-[12px]">要求</Label>
+              <Input
+                value={toDisplayStr((item as any).Content)}
+                readOnly
+                disabled
+                className="text-[13px]"
+                style={{ height: '25px', minHeight: '25px', paddingInline: '4px' }}
+              />
+              <Label className="text-[12px]">方法</Label>
+              <Input
+                value={toDisplayStr((item as any).Method)}
+                readOnly
+                disabled
+                className="text-[13px]"
+                style={{ height: '25px', minHeight: '25px', paddingInline: '4px' }}
+              />
+            </div>
+
+            <div className="mt-2 grid grid-cols-[auto_minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-x-[6px] gap-y-[6px] sm:grid-cols-[26px_58px_26px_58px_26px_58px_26px_1fr]">
+              <Label className="text-[12px]">频率</Label>
+              <Input
+                value={toDisplayStr((item as any).Frequency)}
+                readOnly
+                disabled
+                className="text-[13px]"
+                style={{ height: '25px', minHeight: '25px', paddingInline: '4px' }}
+              />
+              <Label className="text-[12px]">上限</Label>
+              <Input
+                value={toDisplayStr((item as any).UpQValue)}
+                readOnly
+                disabled
+                className="text-[13px]"
+                style={{ height: '25px', minHeight: '25px', paddingInline: '4px' }}
+              />
+              <Label className="text-[12px]">下限</Label>
+              <Input
+                value={toDisplayStr((item as any).DownQValue)}
+                readOnly
+                disabled
+                className="text-[13px]"
+                style={{ height: '25px', minHeight: '25px', paddingInline: '4px' }}
+              />
+              <Label className="text-[12px]">对比</Label>
+              <Input
+                value={toDisplayStr((item as any).CmpQValue)}
+                readOnly
+                disabled
+                className="text-[13px]"
+                style={{ height: '25px', minHeight: '25px', paddingInline: '4px' }}
+              />
+            </div>
+
+            <div className="mt-2 grid grid-cols-[auto_repeat(5,minmax(0,1fr))] items-center gap-x-[6px] sm:grid-cols-[50px_repeat(5,58px)]">
+              <Label className="text-[12px]">实测1~5</Label>
+              {[
+                (item as any).MeasuredRecord1,
+                (item as any).MeasuredRecord2,
+                (item as any).MeasuredRecord3,
+                (item as any).MeasuredRecord4,
+                (item as any).MeasuredRecord5,
+              ].map((s, i) => (
+                <NumberInput
+                  key={i}
+                  value={toNumOrEmpty(s)}
+                  // 实测项仅在失焦提交：避免移动端每次按键都触发整页刷新导致输入卡顿
+                  onChange={(nv) => onSetMeasureAtRow(index, i, nv)}
+                  disabled={i >= enabledCount || disableDetailEdit}
+                  className="text-right"
+                  style={{ height: '25px', minHeight: '25px', paddingInline: '4px' }}
+                  ariaLabel={`明细第${index + 1}行-实测${i + 1}`}
+                />
+              ))}
+            </div>
+            <DetailRequiredRegistrar
+              rowIndex={index}
+              enabledCount={enabledCount}
+              registerRequired={registerRequired}
+              details={details}
+            />
+          </>
+        )
+      }}
+    />
+  )
+})
 
 /**
  *
@@ -391,8 +444,12 @@ function HeaderDocument({
   processOptions?: { label: string; value: string }[]
 }) {
   const billView = bill as any
+  const billRef = useRef(bill)
   const actions = { setBill: onSetBill } as any
 
+  useEffect(() => {
+    billRef.current = bill
+  }, [bill])
 
   // 注册必填：检验数/检验员/判定
   useEffect(() => {
@@ -413,19 +470,19 @@ function HeaderDocument({
 
     const unregs = [
       registerRequired('ChkBQty', {
-        getValue: () => (bill as any)?.ChkBQty,
+        getValue: () => (billRef.current as any)?.ChkBQty,
         focus: focusByAria('检验数'),
         isEmpty: (v) => !(typeof v === 'number' && Number.isFinite(v) && v > 0),
       }),
       registerRequired('Employeeid', {
-        getValue: () => (bill as any)?.Employeeid,
+        getValue: () => (billRef.current as any)?.Employeeid,
         focus: () => {
           void focusComboboxByAriaLabel('检验员')
         },
         isEmpty: (v) => !(typeof v === 'number') || !Number.isFinite(v) || v <= 0,
       }),
       registerRequired('CheckResult', {
-        getValue: () => (bill as any)?.CheckResult,
+        getValue: () => (billRef.current as any)?.CheckResult,
         focus: () => {
           void focusComboboxByAriaLabel('判定')
         },
@@ -440,7 +497,7 @@ function HeaderDocument({
         } catch {}
       }
     }
-  }, [registerRequired, bill])
+  }, [registerRequired])
 
   // 状态文本颜色
   function getStatusTextClass(status: number): string {
@@ -555,6 +612,7 @@ function HeaderDocument({
         <NumberInput
           value={toNumOrEmpty(bill.ChkBQty)}
           onValueChange={onChangeInspect}
+          onValueChangeThrottleMs={50}
           onChange={onChangeInspect}
           className="sm:w-[46px]"
           ariaLabel="检验数"
@@ -565,6 +623,7 @@ function HeaderDocument({
         <NumberInput
           value={toNumOrEmpty(bill.PassBQty)}
           onValueChange={onChangePass}
+          onValueChangeThrottleMs={50}
           onChange={onChangePass}
           className="sm:w-[46px]"
           ariaLabel="合格数"
@@ -575,6 +634,7 @@ function HeaderDocument({
         <NumberInput
           value={toNumOrEmpty(bill.RQty)}
           onValueChange={onChangeAllow}
+          onValueChangeThrottleMs={50}
           onChange={onChangeAllow}
           className="sm:w-[46px]"
           ariaLabel="让步数"
@@ -585,6 +645,7 @@ function HeaderDocument({
         <NumberInput
           value={toNumOrEmpty(bill.NotPassBQty)}
           onValueChange={onChangeNg}
+          onValueChangeThrottleMs={50}
           onChange={onChangeNg}
           className="sm:w-[46px] text-right"
           ariaLabel="不合格数"

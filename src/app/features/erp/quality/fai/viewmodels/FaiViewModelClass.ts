@@ -393,10 +393,18 @@ export class FaiViewModel extends QualityDocumentBase<FirstInspectionDocument, F
   public setMeasureAtRow(rowIndex: number, measureIndex: number, v: number | ''): void {
     if (this.disableDetailEdit) return
     const key = `MeasuredRecord${measureIndex + 1}` as keyof FirstInspectionDetail
-    const list = (this.details || []).map((d, idx) =>
-      idx === rowIndex ? ({ ...(d as any), [key]: v === '' ? '' : String(v) } as any) : d,
-    )
-    this.details = list as any
+    const nextValue = v === '' ? '' : String(v)
+    const list = Array.isArray(this.details) ? this.details : []
+    const current = list[rowIndex] as any
+    if (!current) return
+
+    // 若值未变化则不 emit，避免输入过程中频繁触发整页刷新。
+    if ((current as any)?.[key] === nextValue) return
+
+    // 仅更新目标行，避免 map 全量明细带来的性能开销。
+    const nextList = list.slice()
+    nextList[rowIndex] = ({ ...(current as any), [key]: nextValue } as any)
+    this.details = nextList as any
     this.emit()
   }
 
@@ -580,8 +588,16 @@ export class FaiViewModel extends QualityDocumentBase<FirstInspectionDocument, F
    *
    */
   private writeQty({ inspect, pass, allow, ng }: { inspect: number; pass: number; allow: number; ng: number }): void {
+    const bill = this.bill as any
+    const prevInspect = this.ensureNumber(bill?.ChkBQty)
+    const prevPass = this.ensureNumber(bill?.PassBQty)
+    const prevAllow = this.ensureNumber(bill?.RQty)
+    const prevNg = this.ensureNumber(bill?.NotPassBQty)
+
+    if (prevInspect === inspect && prevPass === pass && prevAllow === allow && prevNg === ng) return
+
     const next = {
-      ...(this.bill as any),
+      ...(bill as any),
       ChkBQty: inspect,
       PassBQty: pass,
       RQty: allow,

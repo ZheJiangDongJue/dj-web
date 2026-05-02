@@ -393,10 +393,18 @@ export class FqcViewModel extends QualityDocumentBase<FinalInspectionDocument, F
   public setMeasureAtRow(rowIndex: number, measureIndex: number, v: number | ''): void {
     if (this.disableDetailEdit) return
     const key = `MeasuredRecord${measureIndex + 1}` as keyof FinalInspectionDetail
-    const list = (this.details || []).map((d, idx) =>
-      idx === rowIndex ? ({ ...(d as any), [key]: v === '' ? '' : String(v) } as any) : d,
-    )
-    this.details = list as any
+    const nextValue = v === '' ? '' : String(v)
+    const list = Array.isArray(this.details) ? this.details : []
+    const current = list[rowIndex] as any
+    if (!current) return
+
+    // 若值未发生变化则不 emit，避免在“仅切换焦点/重复回写”时触发整页重渲染。
+    if ((current as any)?.[key] === nextValue) return
+
+    // 仅浅拷贝数组 + 当前行，避免每次输入都 map 全量明细造成卡顿与 GC 压力。
+    const nextList = list.slice()
+    nextList[rowIndex] = ({ ...(current as any), [key]: nextValue } as any)
+    this.details = nextList as any
     this.emit()
   }
 
@@ -580,8 +588,17 @@ export class FqcViewModel extends QualityDocumentBase<FinalInspectionDocument, F
    *
    */
   private writeQty({ inspect, pass, allow, ng }: { inspect: number; pass: number; allow: number; ng: number }): void {
+    const bill = this.bill as any
+    const prevInspect = this.ensureNumber(bill?.ChkBQty)
+    const prevPass = this.ensureNumber(bill?.PassBQty)
+    const prevAllow = this.ensureNumber(bill?.RQty)
+    const prevNg = this.ensureNumber(bill?.NotPassBQty)
+
+    // 若四个数量均无变化，则不 emit，避免 blur/中间态导致的重复联动刷新。
+    if (prevInspect === inspect && prevPass === pass && prevAllow === allow && prevNg === ng) return
+
     const next = {
-      ...(this.bill as any),
+      ...(bill as any),
       ChkBQty: inspect,
       PassBQty: pass,
       RQty: allow,
