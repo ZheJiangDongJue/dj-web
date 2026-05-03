@@ -562,9 +562,9 @@ export default function ClientPage({
         </>
       }
       details={
-        <div className="grid h-full grid-rows-2 gap-2 overflow-hidden">
+        <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden">
           {/* 上半部分：记录行列表（占用上半区） */}
-          <section className="flex flex-col min-h-0 overflow-hidden">
+          <section className="flex flex-1 flex-col min-h-0 overflow-hidden">
             {/* 顶部操作行：左侧“+”，行中央标签 */}
             <div className="mb-2 relative flex items-center shrink-0">
               <button
@@ -592,7 +592,7 @@ export default function ClientPage({
           </section>
 
           {/* 下半部分：PhotoGrid（占用下半区） */}
-          <section className="flex flex-col min-h-0 overflow-hidden">
+          <section className="flex flex-1 flex-col min-h-0 overflow-hidden">
             <Label className="text-[12px] opacity-70 mb-1 shrink-0">照片证据</Label>
             <div className="flex-1 overflow-y-auto overflow-x-hidden">
               <MemoPhotoGrid

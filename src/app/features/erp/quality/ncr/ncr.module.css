@@ -6,7 +6,7 @@
 .frame {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
-  min-height: 100%;
+  min-height: 0;
 }
 
 .top {
@@ -17,6 +17,7 @@
 .middle {
   /* 中部列表区：作为滚动容器 */
   min-height: 0;
+  position: relative;
 }
 
 .bottom {
