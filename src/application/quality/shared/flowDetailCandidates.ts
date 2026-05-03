@@ -3,7 +3,7 @@ import type { TableRecordLike } from '@/lib/erp/flow-scan-api'
 
 /**
  *
- * 日计划扫码（RJH-*）在“多条当前工序明细”场景下的候选项结构。
+ * 日计划扫码（RJH-*）在"多条当前工序明细"场景下的候选项结构。
  * @remarks
  * - NCR/首件检验/末件检验共享同一结构，便于复用 UI 与选择逻辑。
  *
@@ -17,11 +17,15 @@ export type FlowDetailCandidate = {
   readonly typeofWorkId?: number
   /** 可选：LocationIndex（用于 UI 排序/展示） */
   readonly locationIndex?: number
+  /** 可选：计划数（BQty） */
+  readonly bQty?: number
+  /** 可选：工种内容（TypeofWork.Content） */
+  readonly typeofWorkContent?: string
 }
 
 /**
  *
- * 将“可能是 CLR 全限定名”的表名归一为表名（取最后一段）。
+ * 将"可能是 CLR 全限定名"的表名归一为表名（取最后一段）。
  *
  */
 function normalizeErpTableName(typeNameRaw: unknown): string {
@@ -41,6 +45,12 @@ function normalizeNonNegativeInt(value: unknown): number | null {
   const n = typeof value === 'number' ? value : Number(value)
   if (!Number.isFinite(n) || n < 0) return null
   return Math.floor(n)
+}
+
+function normalizeDecimal(value: unknown): number | undefined {
+  const n = typeof value === 'number' ? value : Number(value)
+  if (!Number.isFinite(n)) return undefined
+  return n
 }
 
 /**
@@ -86,10 +96,10 @@ export function parseTableRecords(list: TableRecordLike[]): Array<{ tableName: s
 
 /**
  *
- * 从 FlowScanApi.CheckDocumentState 的响应 data 中提取“当前工序明细”列表。
+ * 从 FlowScanApi.CheckDocumentState 的响应 data 中提取"当前工序明细"列表。
  * @remarks
  * - 仅依赖 Items/items[*].FlowDetail/flowDetail，避免读取 CurrentFlowDetails。
- * - 仅返回 Matched/matched=true 的项（由调用方通过 documentKind/state 约束“可用工序”）。
+ * - 仅返回 Matched/matched=true 的项（由调用方通过 documentKind/state 约束"可用工序"）。
  *
  */
 export function parseFlowDetailsFromCheckDocumentStateData(
@@ -107,7 +117,7 @@ export function parseFlowDetailsFromCheckDocumentStateData(
   const seen = new Set<string>()
   const result: Array<{ tableName: string; id: number }> = []
   for (const it of parsed) {
-    const key = `${it.tableName}:${it.id}`
+    const key = it.tableName + ':' + it.id
     if (seen.has(key)) continue
     seen.add(key)
     result.push(it)
@@ -135,7 +145,7 @@ export function parseDocumentsFromCheckDocumentStateData(
   const rawItems = ((data as any)?.Items ?? (data as any)?.items ?? []) as any[]
   if (!Array.isArray(rawItems) || rawItems.length === 0) return []
 
-  const key = `${tableName}:${id}`
+  const key = tableName + ':' + id
   for (const it of rawItems) {
     const rawFlowDetail = (it as any)?.FlowDetail ?? (it as any)?.flowDetail
     if (!rawFlowDetail) continue
@@ -144,7 +154,7 @@ export function parseDocumentsFromCheckDocumentStateData(
     if (parsedFlowDetail.length === 0) continue
 
     const only = parsedFlowDetail[0]
-    if (`${only.tableName}:${only.id}` !== key) continue
+    if (only.tableName + ':' + only.id !== key) continue
 
     const rawDocs = ((it as any)?.Documents ?? (it as any)?.documents ?? []) as any[]
     if (!Array.isArray(rawDocs) || rawDocs.length === 0) return []
@@ -160,7 +170,7 @@ export function parseDocumentsFromCheckDocumentStateData(
       const statusRaw = (rawDoc as any)?.Status ?? (rawDoc as any)?.status
       const statusParsed = normalizeNonNegativeInt(statusRaw)
 
-      const docKey = `${docTableName}:${docId}`
+      const docKey = docTableName + ':' + docId
       if (seen.has(docKey)) continue
       seen.add(docKey)
       if (statusParsed === null) {
@@ -177,10 +187,10 @@ export function parseDocumentsFromCheckDocumentStateData(
 
 /**
  *
- * 从 documents 列表中选择“优先打开”的单据 id。
+ * 从 documents 列表中选择"优先打开"的单据 id。
  * @remarks
- * - 若存在“未审批”（status===0）的单据，则优先选择（取 id 最大者）。
- * - 否则回退到“取 id 最大者”的旧逻辑。
+ * - 若存在"未审批"（status===0）的单据，则优先选择（取 id 最大者）。
+ * - 否则回退到"取 id 最大者"的旧逻辑。
  *
  */
 export function pickPreferredDocumentId(documents: FlowScanDocumentCandidate[]): number {
@@ -197,11 +207,11 @@ export function pickPreferredDocumentId(documents: FlowScanDocumentCandidate[]):
 
 /**
  *
- * 多条“当前工序明细”场景：在所有候选明细中扫描并选择“未审批”的目标单据。
+ * 多条"当前工序明细"场景：在所有候选明细中扫描并选择"未审批"的目标单据。
  * @remarks
- * - 仅当 Documents 中存在 `status`（或 `Status`）字段时才可判定“未审批”；缺失时不会误判为未审批。
- * - 仅匹配目标单据类型（`tableName === targetDocumentTableName`），避免打开其他业务单据。
- * - 当存在多张未审批目标单据时，取 `id` 最大者（视为“最新”）。
+ * - 仅当 Documents 中存在 status（或 Status）字段时才可判定"未审批"；缺失时不会误判为未审批。
+ * - 仅匹配目标单据类型（	ableName === targetDocumentTableName），避免打开其他业务单据。
+ * - 当存在多张未审批目标单据时，取 id 最大者（视为"最新"）。
  *
  */
 export function pickUnapprovedDocumentIdAcrossFlowDetails(
@@ -229,19 +239,21 @@ export function pickUnapprovedDocumentIdAcrossFlowDetails(
 /**
  *
  * 将 {tableName,id} 列表补齐为可展示的 FlowDetailCandidate。
- * - 读取工序明细表的 `TypeofWorkid/LocationIndex` 供 UI 展示
- * - 按 `LocationIndex -> id` 排序，保证候选项顺序稳定
+ * - 读取工序明细表的 TypeofWorkid/LocationIndex/BQty 供 UI 展示
+ * - 批量查询工种表的 Content 补充工种内容
+ * - 按 LocationIndex -> id 排序，保证候选项顺序稳定
  *
  */
 export async function enrichFlowDetailCandidates(
   list: Array<{ tableName: string; id: number }>,
 ): Promise<FlowDetailCandidate[]> {
+  // 第一步：并发查询每条工序明细的基础信息
   const enriched = await Promise.all(
     list.map(async (it): Promise<FlowDetailCandidate> => {
       try {
         const rows = await fetchLookup(
           it.tableName,
-          ['id', 'TypeofWorkid', 'LocationIndex'],
+          ['id', 'TypeofWorkid', 'LocationIndex', 'BQty'],
           undefined,
           { where: { DeletedTag: 0, id: it.id }, take: 1 },
         )
@@ -249,11 +261,13 @@ export async function enrichFlowDetailCandidates(
         const typeofWorkId = normalizePositiveInt((row as any)?.TypeofWorkid ?? (row as any)?.typeofWorkid)
         const locRaw = (row as any)?.LocationIndex ?? (row as any)?.locationIndex
         const locationIndex = Number.isFinite(Number(locRaw)) ? Number(locRaw) : undefined
+        const bQty = normalizeDecimal((row as any)?.BQty ?? (row as any)?.bQty)
         return {
           flowDetailTableName: it.tableName,
           flowDetailId: it.id,
           typeofWorkId: typeofWorkId || undefined,
           locationIndex,
+          bQty,
         }
       } catch {
         return { flowDetailTableName: it.tableName, flowDetailId: it.id }
@@ -261,7 +275,46 @@ export async function enrichFlowDetailCandidates(
     }),
   )
 
-  return enriched.sort((a, b) => {
+  // 第二步：收集所有工种 ID，批量查询工种 Content
+  const workTypeIds = Array.from(
+    new Set(
+      enriched
+        .map((c) => c.typeofWorkId)
+        .filter((id): id is number => typeof id === 'number' && id > 0),
+    ),
+  )
+
+  let contentMap: Map<number, string> = new Map()
+  if (workTypeIds.length > 0) {
+    try {
+      const workTypeRows = await fetchLookup(
+        'TypeofWork',
+        ['id', 'Content'],
+        undefined,
+        { where: { DeletedTag: 0, id: workTypeIds } },
+      )
+      if (Array.isArray(workTypeRows)) {
+        for (const row of workTypeRows) {
+          const id = normalizePositiveInt((row as any)?.id)
+          const content = String((row as any)?.Content ?? (row as any)?.content ?? '').trim()
+          if (id && content) {
+            contentMap.set(id, content)
+          }
+        }
+      }
+    } catch {
+      // 工种查询失败时降级为空
+    }
+  }
+
+  // 第三步：合并工种内容到候选项
+  const result = enriched.map((c) => {
+    const typeofWorkContent = c.typeofWorkId ? contentMap.get(c.typeofWorkId) : undefined
+    return { ...c, typeofWorkContent }
+  })
+
+  // 排序
+  return result.sort((a, b) => {
     const aLoc = typeof a.locationIndex === 'number' ? a.locationIndex : Number.MAX_SAFE_INTEGER
     const bLoc = typeof b.locationIndex === 'number' ? b.locationIndex : Number.MAX_SAFE_INTEGER
     if (aLoc !== bLoc) return aLoc - bLoc
