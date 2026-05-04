@@ -208,7 +208,7 @@ export default function ErpCategoryPage() {
                   <span className="t-text-secondary">
                     权限加载失败，已隐藏受控入口。请刷新页面重试，或联系管理员检查权限配置。
                   </span>
-                  {permError && (
+                  {!!permError && (
                     <span className="sr-only">
                       {typeof (permError as any)?.message === "string" ? (permError as any).message : ""}
                     </span>
