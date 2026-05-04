@@ -114,3 +114,47 @@ body {
     @apply bg-background text-foreground;
   }
 }
+
+/* ========================================
+ * 路由过渡反馈（RouteTransition）
+ * 配合 RouteTransitionProvider / AppLink 使用
+ * ======================================== */
+
+/* 被点击的具体元素：opacity 降低 + 禁用重复点击 */
+[data-pending="true"] {
+  opacity: 0.6;
+  transition: opacity 80ms ease-out;
+  pointer-events: none;
+}
+
+/* 全局 pending：光标变 progress */
+body[data-route-pending="true"] {
+  cursor: progress;
+}
+
+/* pending 时禁用 hover 视觉错觉 */
+body[data-route-pending="true"] .t-accent:hover,
+body[data-route-pending="true"] a:hover {
+  filter: none;
+}
+
+/* loading.tsx 骨架屏延迟显示：避免快速跳转闪烁 */
+@keyframes app-skeleton-fade-in {
+  to { opacity: 1; }
+}
+
+.app-loading-root {
+  opacity: 0;
+  animation: app-skeleton-fade-in 200ms 200ms forwards;
+}
+
+/* 尊重用户的减少动画偏好 */
+@media (prefers-reduced-motion: reduce) {
+  .app-loading-root {
+    animation-duration: 1ms;
+    animation-delay: 0ms;
+  }
+  [data-pending="true"] {
+    transition: none;
+  }
+}

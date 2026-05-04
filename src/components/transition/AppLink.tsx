@@ -1,7 +1,7 @@
 "use client";
 
 import Link, { type LinkProps } from "next/link";
-import { forwardRef, useEffect, useState } from "react";
+import { forwardRef, useState } from "react";
 import type { AnchorHTMLAttributes, MouseEvent } from "react";
 import { useRouteTransition } from "./RouteTransitionContext";
 
@@ -13,7 +13,8 @@ export type AppLinkProps = Omit<AnchorHTMLAttributes<HTMLAnchorElement>, "href">
 /**
  * 包装 next/link 的 Link：
  * - 点击时立即标记 data-pending=true 并触发 RouteTransition.startTransition
- * - 通过 useEffect 监听 isPending 变 false 自动清除 data-pending
+ * - 当全局 isPending 由 true 变 false 时，于渲染期间清除本地 pending
+ *   （合法的 derived state 模式，避免 effect 内同步 setState）
  * - Ctrl/Meta/Shift/Alt/中键 / preventDefault 不触发过渡（保留浏览器原生行为）
  */
 export const AppLink = forwardRef<HTMLAnchorElement, AppLinkProps>(function AppLink(
@@ -22,12 +23,15 @@ export const AppLink = forwardRef<HTMLAnchorElement, AppLinkProps>(function AppL
 ) {
   const { startTransition, isPending } = useRouteTransition();
   const [pending, setPending] = useState(false);
+  const [prevIsPending, setPrevIsPending] = useState(isPending);
 
-  useEffect(() => {
+  // 渲染期间侦测 isPending 变化，true → false 时清空本地 pending
+  if (prevIsPending !== isPending) {
+    setPrevIsPending(isPending);
     if (!isPending && pending) {
       setPending(false);
     }
-  }, [isPending, pending]);
+  }
 
   function handleClick(e: MouseEvent<HTMLAnchorElement>) {
     onClick?.(e);
