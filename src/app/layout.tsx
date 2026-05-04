@@ -6,6 +6,8 @@ import DensityClient from "@/components/responsive/DensityClient";
 import ThemeInitScript from "@/components/theme/ThemeInitScript";
 import { Toaster } from "@/components/ui/sonner";
 import AppServicesProvider from "@/infrastructure/di/AppServicesProvider";
+import { RouteTransitionProvider } from "@/components/transition/RouteTransitionContext";
+import { TopProgressBar } from "@/components/transition/TopProgressBar";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -48,12 +50,15 @@ export default function RootLayout({
       </head>
       <body className={`${geistSans.variable} ${geistMono.variable} min-h-dvh antialiased`}>
         <ThemeProvider>
-          <AppServicesProvider>
-            <DensityClient />
-            {/* 全局提示容器（sonner） */}
-            <Toaster position="top-center" richColors closeButton />
-            {children}
-          </AppServicesProvider>
+          <RouteTransitionProvider>
+            <TopProgressBar />
+            <AppServicesProvider>
+              <DensityClient />
+              {/* 全局提示容器（sonner） */}
+              <Toaster position="top-center" richColors closeButton />
+              {children}
+            </AppServicesProvider>
+          </RouteTransitionProvider>
         </ThemeProvider>
       </body>
     </html>
