@@ -161,13 +161,6 @@ export default function ErpCategoryPage() {
 
   return (
     <>
-      {/* 键盘快捷键：跳至主内容区域 */}
-      <a
-        href="#erp-features-main"
-        className="sr-only focus:not-sr-only focus:fixed focus:left-[var(--space-3)] focus:top-[var(--space-3)] focus:z-50 focus:rounded-[var(--radius-md)] focus:bg-[var(--color-accent)] focus:px-[var(--space-3)] focus:py-[var(--space-2)] focus:text-white focus:no-underline focus:outline-none"
-      >
-        跳至主内容
-      </a>
       <MainFill aria-label="分类" className="flex-row overflow-hidden">
         {/* 左侧导航常驻（含移动端）。宽度随断点渐进增强 */}
         <div className="block w-[100px] flex-shrink-0 border-r border-[var(--color-border)] bg-[var(--color-bg)] sm:w-[100px] md:w-[120px] lg:w-[160px]">

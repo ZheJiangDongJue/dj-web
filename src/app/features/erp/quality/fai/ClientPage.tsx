@@ -1,6 +1,6 @@
 'use client'
 import { useFeaturesPageTitle } from '@/app/features/_components'
-import { memo, useCallback, useEffect, useId, useRef, type CSSProperties } from 'react'
+import { memo, useCallback, useEffect, useId, useMemo, useRef, type CSSProperties } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
 import { Input } from '@/components/ui/input'
@@ -18,6 +18,7 @@ import { DocumentStatus } from '@/types/erp-db.generated'
 import { type RequiredFieldRegistration } from '@/lib/validation/requiredFieldManager'
 import { hasStatusFlag, documentStatusToText } from '../shared/helpers'
 import FlowDetailPickDialog from '../shared/FlowDetailPickDialog'
+import { QualityPageWarmupStrip, useQualityPageWarmup } from '../shared/pageWarmup'
 
 /**
  *
@@ -91,21 +92,18 @@ function FaiBody({ rowGap, initialScanCode }: { rowGap: number; initialScanCode?
   const queryScanCode = searchParams.get('scancode')
   const lastAutoOpenKeyRef = useRef<string | null>(null)
   const lastAutoActionKeyRef = useRef<string | null>(null)
+  const warmupTasks = useMemo(
+    () => [
+      { key: 'inspector', label: '检验员', run: () => vm.loadInspectorOptions?.() },
+      { key: 'material', label: '物料', run: () => vm.loadMaterialOptions?.() },
+      { key: 'process', label: '工序', run: () => vm.loadProcessOptions?.() },
+    ],
+    [vm],
+  )
+  const warmupState = useQualityPageWarmup({ tasks: warmupTasks, successHoldMs: 1800 })
+  const isPagePreparing = !warmupState.interactive
 
   // 当前检验工序由单据字段 TypeofWorkid 控制，不再在 View 层推导选中项
-
-  // 首次进入时加载检验员与物料下拉数据
-  useEffect(() => {
-    void (async () => {
-      try {
-        await Promise.all([
-          vm.loadInspectorOptions?.(),
-          vm.loadMaterialOptions?.(),
-          vm.loadProcessOptions?.(),
-        ])
-      } catch {}
-    })()
-  }, [vm])
 
   // 支持 URL 参数自动打开：
   // 1) ?id=Number：直接打开首件检验单据
@@ -217,7 +215,7 @@ function FaiBody({ rowGap, initialScanCode }: { rowGap: number; initialScanCode?
 
       <DocumentPageLayout
         className="w-full"
-        readOnly={vm.disableDetailEdit}
+        readOnly={isPagePreparing || vm.disableDetailEdit}
         header={(
           <>
             <div className="mt-2">
@@ -227,6 +225,7 @@ function FaiBody({ rowGap, initialScanCode }: { rowGap: number; initialScanCode?
                 onRefresh={() => void vm.handleRefresh()}
               />
             </div>
+            <QualityPageWarmupStrip state={warmupState} className="mt-2" />
             <HeaderDocument
               rowGap={rowGap}
               registerRequired={vm.registerRequired}
@@ -259,12 +258,12 @@ function FaiBody({ rowGap, initialScanCode }: { rowGap: number; initialScanCode?
         )}
         footer={(
           <>
-            <DebugFab menuItems={vm.debugMenu} />
+            <DebugFab visible={isPagePreparing ? false : undefined} menuItems={vm.debugMenu} />
             <ApproveFooterBar
               onApprove={() => void vm.handleApprove()}
               onUnapprove={() => void vm.handleUnapprove()}
-              approveDisabled={vm.disableApprove}
-              unapproveDisabled={vm.disableUnapprove}
+              approveDisabled={isPagePreparing || vm.disableApprove}
+              unapproveDisabled={isPagePreparing || vm.disableUnapprove}
             />
           </>
         )}

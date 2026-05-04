@@ -19,6 +19,7 @@ import DebugFab, { type DebugMenuItem } from "@/components/molecules/DebugFab"
 import { DocumentStatus, type DefectiveReworkOrderDocument } from "@/types/erp-db.generated"
 import { documentStatusToText, hasStatusFlag, getErpUserFromStorage } from "../shared/helpers"
 import FlowDetailPickDialog from '../shared/FlowDetailPickDialog'
+import { QualityPageWarmupStrip, useQualityPageWarmup } from '../shared/pageWarmup'
 import { useNcrViewModelClass as useNcrVM, type LocalErpImageItem } from "./viewmodels/NcrViewModelClass"
 import { useNcrExternal } from "./viewmodels/useNcrExternal"
 import { isAndroidBridgeAvailable, pickImagesAdvanced, takePhoto } from "@/lib/android-bridge"
@@ -152,6 +153,15 @@ export default function ClientPage({
   const initialIdParam = initialId != null ? String(initialId) : null
   const targetIdParam = queryId ?? initialIdParam
   const lastAutoOpenKeyRef = useRef<string | null>(null)
+  const warmupTasks = useMemo(
+    () => [
+      { key: 'inspector', label: '检验员', run: () => vm.loadInspectorOptions?.() },
+      { key: 'process', label: '工序', run: () => vm.loadProcessOptions?.() },
+    ],
+    [vm],
+  )
+  const warmupState = useQualityPageWarmup({ tasks: warmupTasks, successHoldMs: 1800 })
+  const isPagePreparing = !warmupState.interactive
 
   /**
    *
@@ -216,9 +226,6 @@ export default function ClientPage({
   // 首次进入：新建空白单据 + 载入下拉选项
   useEffect(() => {
     try { vm.createNewBill() } catch {}
-    void (async () => {
-      try { await Promise.all([vm.loadInspectorOptions?.(), vm.loadProcessOptions?.()]) } catch {}
-    })()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -537,7 +544,7 @@ export default function ClientPage({
       sectionClassName={styles.frame}
       headerWrapperClassName={`${styles.top} pt-2 pb-1`}
       detailsWrapperClassName={`mt-0 ${styles.middle} pt-1 pb-2`}
-      readOnly={vm.disableDetailEdit}
+      readOnly={isPagePreparing || vm.disableDetailEdit}
       header={
         <>
           {/* 顶部操作按钮：新增 / 删除 / 刷新 */}
@@ -548,6 +555,7 @@ export default function ClientPage({
               onRefresh={() => void vm.handleRefresh()}
             />
           </div>
+          <QualityPageWarmupStrip state={warmupState} className="mt-2" />
           <HeaderSection
             entity={vm.bill}
             materialCode={vm.materialCode}
@@ -618,11 +626,11 @@ export default function ClientPage({
       footer={
         <>
           {/* 调试功能悬浮按钮：提供“模拟扫码” */}
-          <DebugFab menuItems={debugMenuItems} />
+          <DebugFab visible={isPagePreparing ? false : undefined} menuItems={debugMenuItems} />
           {/* 底部审批操作条：左“审批”/右“反审批” */}
           <ApproveFooterBar
-            approveDisabled={vm.approveDisabled}
-            unapproveDisabled={vm.unapproveDisabled}
+            approveDisabled={isPagePreparing || vm.approveDisabled}
+            unapproveDisabled={isPagePreparing || vm.unapproveDisabled}
             onApprove={() => {
               void vm.handleApprove()
             }}
