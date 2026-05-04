@@ -1,5 +1,5 @@
 "use client";
-import Link from "next/link";
+import { AppLink as Link } from "@/components/transition/AppLink";
 import { MainFill } from "../../../../../components/layout/MainFill";
 import { useFeaturesPageTitle } from "../../../_components";
 
