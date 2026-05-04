@@ -1,7 +1,8 @@
 "use client";
 import type { ReactNode } from "react";
 import { useMemo, useCallback } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
+import { useNavigateWithTransition } from "@/hooks/useNavigateWithTransition";
 import { TopBar } from "../../components/erp/TopBar";
 import { BottomTabs } from "../../components/erp/BottomTabs";
 
@@ -15,7 +16,7 @@ import { BottomTabs } from "../../components/erp/BottomTabs";
  */
 export default function ErpLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname() || "/erp";
-  const router = useRouter();
+  const router = useNavigateWithTransition();
 
   type TabKey = "home" | "category" | "me";
 
