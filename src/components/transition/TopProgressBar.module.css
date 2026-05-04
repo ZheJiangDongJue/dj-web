@@ -1,0 +1,39 @@
+.bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 2px;
+  width: 0%;
+  background: var(--color-accent);
+  box-shadow: 0 0 8px var(--color-accent);
+  opacity: 0;
+  z-index: 9999;
+  pointer-events: none;
+  transition: opacity 200ms ease-out;
+}
+
+.is-pending {
+  opacity: 1;
+  animation: top-progress-grow 3s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+.is-complete {
+  width: 100%;
+  opacity: 0;
+  animation: none;
+  transition: width 200ms ease-out, opacity 200ms ease-out 200ms;
+}
+
+@keyframes top-progress-grow {
+  0% { width: 0%; }
+  10% { width: 30%; }
+  100% { width: 90%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .is-pending,
+  .is-complete {
+    animation-duration: 1ms;
+    transition-duration: 1ms;
+  }
+}
