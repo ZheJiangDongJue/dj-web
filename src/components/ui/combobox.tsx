@@ -58,6 +58,29 @@ export interface ComboboxOption {
 
 /**
  *
+ * Combobox 内部使用的选项索引。
+ *
+ */
+interface IndexedComboboxOption {
+  /**
+   *
+   * 原始选项对象，选择时需要原样回传给调用方。
+   *
+   */
+  option: ComboboxOption
+  /**
+   *
+   * 统一小写后的检索文本，提前构建以降低打开弹层时的同步计算量。
+   *
+   */
+  searchable: string
+}
+
+const DEFAULT_LOAD_MORE_STEP = 20
+const LOAD_MORE_THRESHOLD_PX = 24
+
+/**
+ *
  * Combobox 组件 Props
  *
  */
@@ -170,6 +193,14 @@ export interface ComboboxProps {
    *
    */
   onOpenChange?: (open: boolean) => void
+  /**
+   *
+   * 每次触底追加的选项数量。
+   * @remarks
+   * 组件会先渲染一批选项，随后在用户滚动到列表底部时继续追加同等规模的批次，直到全部加载完成。
+   *
+   */
+  maxVisibleOptions?: number
 }
 
 /**
@@ -215,7 +246,14 @@ export function Combobox({
   name,
   open: controlledOpen,
   onOpenChange,
+  maxVisibleOptions = DEFAULT_LOAD_MORE_STEP,
 }: ComboboxProps) {
+  const loadMoreStep = Number.isFinite(maxVisibleOptions)
+    ? Math.max(1, Math.floor(maxVisibleOptions))
+    : DEFAULT_LOAD_MORE_STEP
+
+  const [searchValue, setSearchValue] = React.useState("")
+  const [visibleCount, setVisibleCount] = React.useState(loadMoreStep)
   const [uncontrolledValue, setUncontrolledValue] = React.useState(
     defaultValue
   )
@@ -230,6 +268,66 @@ export function Combobox({
     () => getOptionByValue(options, selectedValue),
     [options, selectedValue]
   )
+
+  const indexedOptions = React.useMemo<IndexedComboboxOption[]>(
+    () =>
+      options.map((option) => ({
+        option,
+        searchable: [option.label, option.value, ...(option.keywords ?? [])]
+          .filter(Boolean)
+          .join(" ")
+          .toLocaleLowerCase(),
+      })),
+    [options]
+  )
+
+  React.useEffect(() => {
+    setVisibleCount(loadMoreStep)
+  }, [loadMoreStep, open, searchValue])
+
+  const searchTerm = searchValue.trim().toLocaleLowerCase()
+
+  const filteredOptions = React.useMemo(() => {
+    return searchTerm
+      ? indexedOptions.filter((item) => item.searchable.includes(searchTerm))
+      : indexedOptions
+  }, [indexedOptions, searchTerm])
+
+  const visibleOptions = React.useMemo(() => {
+    const limited = filteredOptions.slice(0, visibleCount)
+
+    if (!searchTerm && selectedValue) {
+      const selectedItem = indexedOptions.find(
+        (item) => item.option.value === selectedValue
+      )
+      if (
+        selectedItem &&
+        !limited.some((item) => item.option.value === selectedValue)
+      ) {
+        return [selectedItem, ...limited]
+      }
+    }
+
+    return limited
+  }, [filteredOptions, indexedOptions, searchTerm, selectedValue, visibleCount])
+
+  const hasMoreOptions = visibleCount < filteredOptions.length
+
+  /**
+   *
+   * 当列表滚动到底部时，追加下一批选项。
+   * @param event 列表滚动事件
+   *
+   */
+  function handleListScroll(event: React.UIEvent<HTMLDivElement>): void {
+    const list = event.currentTarget
+    const distanceToBottom =
+      list.scrollHeight - list.scrollTop - list.clientHeight
+    if (distanceToBottom > LOAD_MORE_THRESHOLD_PX) return
+    setVisibleCount((prev) =>
+      Math.min(prev + loadMoreStep, filteredOptions.length)
+    )
+  }
 
   /**
    *
@@ -335,15 +433,16 @@ export function Combobox({
         className={cn("p-0 min-w-56", contentClassName)}
       >
         <Command className="p-0">
-          <CommandInput placeholder={searchPlaceholder} />
-          <CommandList>
+          <CommandInput
+            placeholder={searchPlaceholder}
+            value={searchValue}
+            onValueChange={setSearchValue}
+          />
+          <CommandList onScroll={handleListScroll}>
             <CommandEmpty>{emptyMessage}</CommandEmpty>
             <CommandGroup>
-              {options.map((opt) => {
+              {visibleOptions.map(({ option: opt, searchable }) => {
                 const selected = opt.value === selectedValue
-                const searchable = [opt.label, opt.value, ...(opt.keywords ?? [])]
-                  .filter(Boolean)
-                  .join(" ")
                 return (
                   <CommandItem
                     key={opt.value}
@@ -370,6 +469,14 @@ export function Combobox({
                 )
               })}
             </CommandGroup>
+            {hasMoreOptions ? (
+              <div
+                aria-hidden="true"
+                className="text-muted-foreground px-3 py-2 text-center text-xs"
+              >
+                继续下滑加载更多
+              </div>
+            ) : null}
           </CommandList>
         </Command>
       </PopoverContent>
