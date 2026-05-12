@@ -36,38 +36,38 @@ export function createDocumentActions(options: UseDocumentActionsOptions & { onS
     }
   }
 
-  const approve = async (overrideId?: string | number | null): Promise<boolean> => {
+  const approve = async (overrideId?: string | number | null): Promise<{ success: boolean; message?: string }> => {
     const effectiveId = overrideId ?? state.id
-    if (!callApprove || effectiveId == null) return false
+    if (!callApprove || effectiveId == null) return { success: false }
     try {
       setLoading(true)
       const res = await callApprove(effectiveId)
-      return !!res?.success
+      return { success: !!res?.success, message: res?.message }
     } finally {
       setLoading(false)
     }
   }
 
-  const unapprove = async (overrideId?: string | number | null): Promise<boolean> => {
+  const unapprove = async (overrideId?: string | number | null): Promise<{ success: boolean; message?: string }> => {
     const effectiveId = overrideId ?? state.id
-    if (!callUnapprove || effectiveId == null) return false
+    if (!callUnapprove || effectiveId == null) return { success: false }
     try {
       setLoading(true)
       const res = await callUnapprove(effectiveId)
-      return !!res?.success
+      return { success: !!res?.success, message: res?.message }
     } finally {
       setLoading(false)
     }
   }
 
-  const remove = async (overrideId?: string | number | null): Promise<boolean> => {
+  const remove = async (overrideId?: string | number | null): Promise<{ success: boolean; message?: string }> => {
     const effectiveId = overrideId ?? state.id
-    if (!callDelete || effectiveId == null) return false
+    if (!callDelete || effectiveId == null) return { success: false }
     try {
       setLoading(true)
       const res = await callDelete(effectiveId)
       if (res?.success) setId(null)
-      return !!res?.success
+      return { success: !!res?.success, message: res?.message }
     } finally {
       setLoading(false)
     }

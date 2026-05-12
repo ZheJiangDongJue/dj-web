@@ -2,6 +2,7 @@ import { toast } from 'sonner'
 import { BillApi } from '@/lib/erp/bill-api'
 import { addScanListener, runAfterAndroidAppResumed, type ScanResultPayload } from '@/lib/android-bridge'
 import type { DocumentActions } from '@/lib/documents/useDocumentActions'
+import { extractUserFacingErrorMessage, formatActionErrorMessage, resolveUserFacingErrorMessage } from '@/lib/errors/user-facing-error'
 
 /**
  *
@@ -751,7 +752,7 @@ export class DocumentBase<TDocument, TDetail> implements DocumentBaseLike<TDocum
       console.error('[DocumentBase] 刷新失败:', error)
       if (!opts?.silent) {
         try {
-          toast.error('获取最新单据失败，请稍后重试')
+          toast.error(resolveUserFacingErrorMessage(error, '获取最新单据失败'))
         } catch {
           // 避免 toast 失败阻断流程
         }
@@ -835,10 +836,9 @@ export class DocumentBase<TDocument, TDetail> implements DocumentBaseLike<TDocum
         Object.prototype.hasOwnProperty.call(res, 'id') &&
         (res as any).id === null
       ) {
-        const msgRaw = (res as any)?.code
-        const msg = typeof msgRaw === 'string' ? msgRaw.trim() : ''
+        const msg = extractUserFacingErrorMessage(res) || (typeof (res as any)?.code === 'string' ? String((res as any).code).trim() : '')
         try {
-          toast.error(msg || '保存失败，请稍后重试')
+          toast.error(formatActionErrorMessage('保存', { message: msg }, '保存失败'))
         } catch {
           // ignore
         }
@@ -904,7 +904,7 @@ export class DocumentBase<TDocument, TDetail> implements DocumentBaseLike<TDocum
     } catch (error) {
       console.error('[DocumentBase] 保存失败:', error)
       try {
-        toast.error('保存失败，请稍后重试')
+        toast.error(formatActionErrorMessage('保存', error, '保存失败'))
       } catch {
         // 避免 toast 失败阻断主流程
       }
@@ -941,10 +941,10 @@ export class DocumentBase<TDocument, TDetail> implements DocumentBaseLike<TDocum
     const id = await this.handleSave()
     if (!id) return false
 
-    const ok = await docActions.approve(id)
-    if (!ok) {
+    const result = await docActions.approve(id)
+    if (!result.success) {
       try {
-        toast.error('审批失败，请稍后重试')
+        toast.error(formatActionErrorMessage('审批', result, '审批失败'))
       } catch {
         // ignore
       }
@@ -994,10 +994,10 @@ export class DocumentBase<TDocument, TDetail> implements DocumentBaseLike<TDocum
     }
     if (!id) return false
 
-    const ok = await docActions.unapprove(id)
-    if (!ok) {
+    const result = await docActions.unapprove(id)
+    if (!result.success) {
       try {
-        toast.error('反审批失败，请稍后重试')
+        toast.error(formatActionErrorMessage('反审批', result, '反审批失败'))
       } catch {
         // ignore
       }
@@ -1057,17 +1057,17 @@ export class DocumentBase<TDocument, TDetail> implements DocumentBaseLike<TDocum
         return true
       }
 
-      const msg = (res as any)?.message
+      const msg = resolveUserFacingErrorMessage(res, '删除失败')
       try {
-        toast.error(typeof msg === 'string' && msg.trim() ? msg : '删除失败，请稍后重试')
+        toast.error(msg)
       } catch {
         // ignore
       }
       return false
     } catch (error) {
-      const msg = typeof error === 'object' && error !== null && 'message' in error ? String((error as any).message ?? '') : ''
+      const msg = resolveUserFacingErrorMessage(error, '删除失败')
       try {
-        toast.error(msg.trim() ? msg : '删除失败，请稍后重试')
+        toast.error(msg)
       } catch {
         // ignore
       }

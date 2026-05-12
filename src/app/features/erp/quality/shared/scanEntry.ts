@@ -1,5 +1,6 @@
 import { toast } from 'sonner'
 import type { ScanResultPayload } from '@/lib/android-bridge'
+import { resolveUserFacingErrorMessage } from '@/lib/errors/user-facing-error'
 
 export type ScanCodeHandler<TResult = unknown> = (code: string) => TResult | Promise<TResult>
 
@@ -206,7 +207,7 @@ export function handleScanResultPayload(payload: ScanResultPayload, options: Han
         }).catch((err) => {
           console.error(`${logTag} 处理扫码失败:`, err)
           try {
-            toast.error(options.errorToastText ?? '扫码处理失败，请稍后重试')
+            toast.error(resolveUserFacingErrorMessage(err, options.errorToastText ?? '扫码处理失败'))
           } catch { }
           finalizeError(err)
         })
@@ -216,7 +217,7 @@ export function handleScanResultPayload(payload: ScanResultPayload, options: Han
     } catch (err) {
       console.error(`${logTag} 处理扫码失败:`, err)
       try {
-        toast.error(options.errorToastText ?? '扫码处理失败，请稍后重试')
+        toast.error(resolveUserFacingErrorMessage(err, options.errorToastText ?? '扫码处理失败'))
       } catch { }
       finalizeError(err)
     }

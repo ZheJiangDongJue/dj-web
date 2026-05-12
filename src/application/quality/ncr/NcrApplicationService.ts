@@ -1,15 +1,19 @@
-import { BillApi, type ApiMessagePack, type UserInfo } from '@/lib/erp/bill-api'
+import { BillApi, type UserInfo } from '@/lib/erp/bill-api'
 import { DEFAULT_DB_NAME } from '@/lib/config'
-import { FlowScanApi, FlowScanCheckState, FlowScanDocumentKind, FlowScanSourceType } from '@/lib/erp/flow-scan-api'
+import { FlowScanDocumentKind, FlowScanSourceType } from '@/lib/erp/flow-scan-api'
 import { QualityApi } from '@/lib/erp/quality-api'
 import { fetchLookup } from '@/lib/erp/lookup-core'
 import { loadImageBase64, type ErpImageItem } from '@/lib/image-loader'
 import {
-  enrichFlowDetailCandidates,
-  pickUnapprovedDocumentIdAcrossFlowDetails,
-  parseFlowDetailsFromCheckDocumentStateData,
   type FlowDetailCandidate,
 } from '@/application/quality/shared/flowDetailCandidates'
+import { BillApprovalService } from '@/application/quality/shared/BillApprovalService'
+import {
+  ScanDocumentFlow,
+  type ScanDocumentFlowResult,
+  type ScanSourceConfig,
+} from '@/application/quality/shared/ScanDocumentFlow'
+import { normalizePositiveInt, resolveUserFacingErrorMessage } from '@/application/quality/shared/billCommon'
 import {
   DefectiveReworkOrderDetail,
   DefectiveReworkOrderDocument,
@@ -108,6 +112,13 @@ export type NcrDraftFromInspectionResult =
  *
  */
  readonly code?: string
+
+/**
+ *
+ * 用户可见的失败消息（优先展示，通常与 code 保持一致）。
+ *
+ */
+ readonly message?: string
 
 /**
  *
@@ -281,6 +292,74 @@ export type NcrScanFlowDetailCandidate = FlowDetailCandidate
 
   /**
    *
+   * 通用审批服务。
+   *
+   */
+  private readonly approvalService = new BillApprovalService({
+    tableName: NCR_TABLE_NAME,
+    getUser: () => getErpUserFromStorage(),
+  })
+
+  /**
+   *
+   * 创建 NCR 扫码流程编排器。
+   * @param mode 创建模式：`daily` 走日计划接口，`flow-detail` 走工序明细接口。
+   *
+   */
+  private createScanFlow(mode: 'daily' | 'flow-detail') {
+    return new ScanDocumentFlow<
+      DefectiveReworkOrderDocument,
+      DefectiveReworkOrderDetail,
+      { readonly inspectorEmployeeId: number }
+    >({
+      documentKind: FlowScanDocumentKind.Ncr,
+      targetDocumentTableName: NCR_TABLE_NAME,
+      getUser: () => getErpUserFromStorage(),
+      createDraft: async ({ user, flowDetailTableName, flowDetailId, scanCode, context }) => {
+        const inspectorEmployeeid = context?.inspectorEmployeeId ?? 0
+        if (mode === 'daily') {
+          return QualityApi.CreateDefectiveReworkOrderByDailyPlanScanCode({
+            dbName: DEFAULT_DB_NAME,
+            user,
+            scanForCode: scanCode,
+            inspectorEmployeeid,
+            flowDetailTableName,
+            flowDetailId,
+          }) as any
+        }
+        return QualityApi.CreateDefectiveReworkOrderByFlowDetail({
+          dbName: DEFAULT_DB_NAME,
+          user,
+          inspectorEmployeeid,
+          flowDetailTableName,
+          flowDetailId,
+        }) as any
+      },
+      draftStrategy: {
+        mode: 'created-id',
+        pickId: (pack) => {
+          const d = (pack as any)?.data ?? (pack as any)?.Data ?? {}
+          const raw = d?.id ?? d?.Id ?? d?.Document?.id ?? d?.Document?.Id
+          return Number(raw) || 0
+        },
+      },
+      messages: {
+        queryFailed: '查询流程卡工序明细失败',
+        noFlowDetail: '未找到当前可用的流程卡工序明细',
+        createFailed: '未能生成不合格返工单',
+        invalidCreatedId: '后端返回单据ID异常，无法打开',
+        invalidFlowDetail: '工序明细参数不合法',
+        scanFailed: '扫码处理失败，请稍后重试',
+      },
+      levels: {
+        noFlowDetail: 'error',
+        createFailed: 'error',
+      },
+    })
+  }
+
+  /**
+   *
    * 用例：按单据 ID 获取 NCR 单据头与明细（供 DocumentBase.refresh/openById 使用）。
    * @param id 单据主键。
    * @returns 单据头 + 明细。
@@ -389,63 +468,71 @@ export type NcrScanFlowDetailCandidate = FlowDetailCandidate
     details: DefectiveReworkOrderDetail[]
     localPhotoEvidence?: readonly NcrLocalPhotoEvidenceItem[]
   }): Promise<NcrSaveResult> {
-    const rawDetails = Array.isArray(input.details) ? input.details : []
-    const detailsPayload = rawDetails.map((d) => stripDetailMetaFields(d))
+    try {
+      const rawDetails = Array.isArray(input.details) ? input.details : []
+      const detailsPayload = rawDetails.map((d) => stripDetailMetaFields(d))
 
-    const localPhotos = Array.isArray(input.localPhotoEvidence) ? input.localPhotoEvidence : []
-    const uploadPhotos = localPhotos.filter((p) => !(p as any)?.isRemoteOnly)
+      const localPhotos = Array.isArray(input.localPhotoEvidence) ? input.localPhotoEvidence : []
+      const uploadPhotos = localPhotos.filter((p) => !(p as any)?.isRemoteOnly)
 
-    // 1) 有照片：走“随单上传”接口（后端单次事务）
-    if (uploadPhotos.length > 0) {
-      let files: FileRecordForNcr[] = []
+      // 1) 有照片：走“随单上传”接口（后端单次事务）
+      if (uploadPhotos.length > 0) {
+        let files: FileRecordForNcr[] = []
+        try {
+          files = await this.buildFilesForUpload(uploadPhotos)
+        } catch (error) {
+          return buildSaveFailureResult(error, '读取图片失败')
+        }
+
+        const documentPayload = this.normalizePayloadTypesByTemplate(
+          input.bill as any,
+          NcrApplicationService.docNormalizeTemplate as any,
+        )
+        const normalizedDetailsPayload = detailsPayload.map((d) =>
+          this.normalizePayloadTypesByTemplate(d as any, NcrApplicationService.detailNormalizeTemplate as any),
+        )
+
+        try {
+          const res = await QualityApi.SaveDefectiveReworkOrderWithFiles({
+            dbName: DEFAULT_DB_NAME,
+            user: getErpUserFromStorage(),
+            document: documentPayload as any,
+            details: normalizedDetailsPayload as any,
+            checkDetails: [],
+            files: files as any,
+          })
+
+          const okRaw = (res as any)?.isSuccess ?? (res as any)?.IsSuccess
+          const ok = typeof okRaw === 'boolean' ? okRaw : false
+          if (!ok) {
+            return buildSaveFailureResult(res, '保存失败')
+          }
+
+          const id = extractBillId(res)
+          if (!id) return { id: null, code: '保存后未返回单据ID', message: '保存后未返回单据ID' }
+          return { id, clearLocalPhotoEvidence: true }
+        } catch (error) {
+          return buildSaveFailureResult(error, '保存失败')
+        }
+      }
+
+      // 2) 无照片：走通用保存（后端单次事务）
       try {
-        files = await this.buildFilesForUpload(uploadPhotos)
+        const res = await BillApi.GeneralBillSave({
+          tableName: NCR_TABLE_NAME,
+          user: getErpUserFromStorage(),
+          bill: input.bill as any,
+          details: detailsPayload as any,
+        })
+        const id = extractBillId(res)
+        if (!id) return { id: null, code: '保存后未返回单据ID', message: '保存后未返回单据ID' }
+        return { id }
       } catch (error) {
-        const msg =
-          typeof error === 'object' && error !== null && 'message' in error
-            ? String((error as any).message ?? '')
-            : String(error ?? '')
-        return { id: null, code: msg || '读取图片失败' }
+        return buildSaveFailureResult(error, '保存失败')
       }
-
-      const documentPayload = this.normalizePayloadTypesByTemplate(
-        input.bill as any,
-        NcrApplicationService.docNormalizeTemplate as any,
-      )
-      const normalizedDetailsPayload = detailsPayload.map((d) =>
-        this.normalizePayloadTypesByTemplate(d as any, NcrApplicationService.detailNormalizeTemplate as any),
-      )
-
-      const res = await QualityApi.SaveDefectiveReworkOrderWithFiles({
-        dbName: DEFAULT_DB_NAME,
-        user: getErpUserFromStorage(),
-        document: documentPayload as any,
-        details: normalizedDetailsPayload as any,
-        checkDetails: [],
-        files: files as any,
-      })
-
-      const okRaw = (res as any)?.isSuccess ?? (res as any)?.IsSuccess
-      const ok = typeof okRaw === 'boolean' ? okRaw : false
-      if (!ok) {
-        const msgRaw = (res as any)?.errorMessage ?? (res as any)?.ErrorMessage
-        const msg = typeof msgRaw === 'string' ? msgRaw : msgRaw == null ? '' : String(msgRaw)
-        return { id: null, code: msg || '保存失败' }
-      }
-
-      const id = extractBillId(res)
-      return { id, clearLocalPhotoEvidence: true }
+    } catch (error) {
+      return buildSaveFailureResult(error, '保存失败')
     }
-
-    // 2) 无照片：走通用保存（后端单次事务）
-    const res = await BillApi.GeneralBillSave({
-      tableName: NCR_TABLE_NAME,
-      user: getErpUserFromStorage(),
-      bill: input.bill as any,
-      details: detailsPayload as any,
-    })
-    const id = extractBillId(res)
-    return { id }
   }
 
   /**
@@ -480,25 +567,7 @@ export type NcrScanFlowDetailCandidate = FlowDetailCandidate
 
     const billId = normalizePositiveInt(id)
     if (!billId) return { success: false, message: '单据ID不合法' }
-
-    const res = (await BillApi.GeneralBillApproval({
-      tableName: NCR_TABLE_NAME,
-      user: getErpUserFromStorage(),
-      billId,
-      isApprove: true,
-      useNewFramework: false,
-    })) as ApiMessagePack
-
-    const successRaw = (res as any)?.issuccess ?? (res as any)?.isSuccess
-    const messageRaw =
-      (res as any)?.message ??
-      (res as any)?.Message ??
-      (res as any)?.errorMessage ??
-      (res as any)?.ErrorMessage
-
-    const success = typeof successRaw === 'boolean' ? successRaw : false
-    const message = typeof messageRaw === 'string' ? messageRaw : messageRaw == null ? '' : String(messageRaw)
-    return { success, message }
+    return this.approvalService.approve(billId)
   }
 
   /**
@@ -528,25 +597,7 @@ export type NcrScanFlowDetailCandidate = FlowDetailCandidate
 
     const billId = normalizePositiveInt(id)
     if (!billId) return { success: false, message: '单据ID不合法' }
-
-    const res = (await BillApi.GeneralBillApproval({
-      tableName: NCR_TABLE_NAME,
-      user: getErpUserFromStorage(),
-      billId,
-      isApprove: false,
-      useNewFramework: false,
-    })) as ApiMessagePack
-
-    const successRaw = (res as any)?.issuccess ?? (res as any)?.isSuccess
-    const messageRaw =
-      (res as any)?.message ??
-      (res as any)?.Message ??
-      (res as any)?.errorMessage ??
-      (res as any)?.ErrorMessage
-
-    const success = typeof successRaw === 'boolean' ? successRaw : false
-    const message = typeof messageRaw === 'string' ? messageRaw : messageRaw == null ? '' : String(messageRaw)
-    return { success, message }
+    return this.approvalService.unapprove(billId)
   }
 
   /**
@@ -677,89 +728,17 @@ export type NcrScanFlowDetailCandidate = FlowDetailCandidate
       readonly pickedFlowDetail?: { tableName: string; id: number } | null
     },
   ): Promise<NcrScanExecuteResult> {
-    const scan = String(scanForCode ?? '').trim()
-    if (!scan) {
-      return { type: 'ERROR', level: 'warning', message: '扫描内容为空' }
-    }
-
-    const user = getErpUserFromStorage()
-    const picked = options?.pickedFlowDetail ?? null
-
-    if (!picked) {
-      // 先用 FlowScanApi.CheckDocumentState 获取“当前工序明细”列表；若多条则让用户选择
-      try {
-        const pack = await FlowScanApi.CheckDocumentState({
-          dbName: DEFAULT_DB_NAME,
-          user,
+    return this.toNcrScanResult(
+      await this.createScanFlow('daily').run({
+        scanForCode,
+        source: {
           sourceType: FlowScanSourceType.DailyPlanDetail,
-          scanForCode: scan,
-          sourceDetailId: 0,
-          documentKind: FlowScanDocumentKind.Ncr,
-          state: FlowScanCheckState.PrevCompletedCurrentUnfinished,
-          includeTableRecords: true,
-        })
-
-        const ok = !!(pack as any)?.success
-        const msg = String((pack as any)?.message ?? '').trim()
-        if (!ok) {
-          return { type: 'ERROR', level: 'error', message: msg || '查询流程卡工序明细失败' }
-        }
-
-        const data = ((pack as any)?.data ?? (pack as any)?.Data ?? null) as any
-        const parsedFlowDetails = parseFlowDetailsFromCheckDocumentStateData(data)
-        if (parsedFlowDetails.length === 0) {
-          return { type: 'ERROR', level: 'error', message: msg || '未找到当前可用的流程卡工序明细' }
-        }
-
-        if (parsedFlowDetails.length > 1) {
-          const unapprovedId = pickUnapprovedDocumentIdAcrossFlowDetails(data, parsedFlowDetails, NCR_TABLE_NAME)
-          if (unapprovedId > 0) return { type: 'OPEN_BY_ID', id: unapprovedId }
-          const candidates = await enrichFlowDetailCandidates(parsedFlowDetails)
-          return { type: 'NEED_PICK_FLOW_DETAIL', scanCode: scan, candidates }
-        }
-
-        const only = parsedFlowDetails[0]
-        const unapprovedId = pickUnapprovedDocumentIdAcrossFlowDetails(data, [only], NCR_TABLE_NAME)
-        if (unapprovedId > 0) return { type: 'OPEN_BY_ID', id: unapprovedId }
-        return this.createDefectiveReworkOrderByDailyPlanWithFlowDetail(scan, user, {
-          inspectorEmployeeId: options?.inspectorEmployeeId ?? 0,
-          flowDetailTableName: only.tableName,
-          flowDetailId: only.id,
-        })
-      } catch (error) {
-        console.error('[NCR] 日计划扫码查询流程卡工序明细失败:', error)
-        return { type: 'ERROR', level: 'error', message: '扫码处理失败，请稍后重试' }
-      }
-    }
-
-    // 已选择某条工序明细：优先打开已有未完成单据，否则按明细入口创建新单据
-    try {
-      const pack = await FlowScanApi.CheckDocumentState({
-        dbName: DEFAULT_DB_NAME,
-        user,
-        sourceType: FlowScanSourceType.DailyPlanDetail,
-        scanForCode: scan,
-        sourceDetailId: 0,
-        documentKind: FlowScanDocumentKind.Ncr,
-        state: FlowScanCheckState.PrevCompletedCurrentUnfinished,
-        includeTableRecords: true,
-      })
-
-      const ok = !!(pack as any)?.success
-      if (ok) {
-        const data = ((pack as any)?.data ?? (pack as any)?.Data ?? null) as any
-        const unapprovedId = pickUnapprovedDocumentIdAcrossFlowDetails(data, [picked], NCR_TABLE_NAME)
-        if (unapprovedId > 0) return { type: 'OPEN_BY_ID', id: unapprovedId }
-      }
-    } catch (error) {
-      console.error('[NCR] 日计划扫码查询已有单据失败（将继续尝试创建）:', error)
-    }
-
-    return this.createDefectiveReworkOrderByDailyPlanWithFlowDetail(scan, user, {
-      inspectorEmployeeId: options?.inspectorEmployeeId ?? 0,
-      flowDetailTableName: picked.tableName,
-      flowDetailId: picked.id,
-    })
+          logTag: '[NCR]',
+        },
+        pickedFlowDetail: options?.pickedFlowDetail ?? null,
+        context: { inspectorEmployeeId: options?.inspectorEmployeeId ?? 0 },
+      }),
+    )
   }
 
   /**
@@ -774,97 +753,18 @@ export type NcrScanFlowDetailCandidate = FlowDetailCandidate
       readonly pickedFlowDetail?: { tableName: string; id: number } | null
     },
   ): Promise<NcrScanExecuteResult> {
-    const rawScan = String(scanForCode ?? '').trim()
-    if (!rawScan) {
-      return { type: 'ERROR', level: 'warning', message: '扫描内容为空' }
-    }
-
-    // 兼容：扫码内容包含额外前缀时，尝试提取标准 JCJH-xxxxxxxxxxxx
-    const normalized = rawScan.match(/JCJH-\d{12}/i)?.[0] ?? rawScan
-
-    const user = getErpUserFromStorage()
-    const picked = options?.pickedFlowDetail ?? null
-
-    if (!picked) {
-      // 先用 FlowScanApi.CheckDocumentState 获取“当前工序明细”列表；若多条则让用户选择
-      try {
-        const pack = await FlowScanApi.CheckDocumentState({
-          dbName: DEFAULT_DB_NAME,
-          user,
+    return this.toNcrScanResult(
+      await this.createScanFlow('flow-detail').run({
+        scanForCode,
+        source: {
           sourceType: FlowScanSourceType.ExtrusionPlanDetail,
-          scanForCode: normalized,
-          sourceDetailId: 0,
-          documentKind: FlowScanDocumentKind.Ncr,
-          state: FlowScanCheckState.PrevCompletedCurrentUnfinished,
-          includeTableRecords: true,
-        })
-
-        const ok = !!(pack as any)?.success
-        const msg = String((pack as any)?.message ?? '').trim()
-        if (!ok) {
-          return { type: 'ERROR', level: 'error', message: msg || '查询流程卡工序明细失败' }
-        }
-
-        const data = ((pack as any)?.data ?? (pack as any)?.Data ?? null) as any
-        const parsedFlowDetails = parseFlowDetailsFromCheckDocumentStateData(data)
-        if (parsedFlowDetails.length === 0) {
-          return { type: 'ERROR', level: 'error', message: msg || '未找到当前可用的流程卡工序明细' }
-        }
-
-        if (parsedFlowDetails.length > 1) {
-          const unapprovedId = pickUnapprovedDocumentIdAcrossFlowDetails(data, parsedFlowDetails, NCR_TABLE_NAME)
-          if (unapprovedId > 0) return { type: 'OPEN_BY_ID', id: unapprovedId }
-          const candidates = await enrichFlowDetailCandidates(parsedFlowDetails)
-          return { type: 'NEED_PICK_FLOW_DETAIL', scanCode: normalized, candidates }
-        }
-
-        const only = parsedFlowDetails[0]
-        const unapprovedId = pickUnapprovedDocumentIdAcrossFlowDetails(data, [only], NCR_TABLE_NAME)
-        if (unapprovedId > 0) return { type: 'OPEN_BY_ID', id: unapprovedId }
-        return this.createDefectiveReworkOrderByFlowDetail(user, {
-          inspectorEmployeeId: options?.inspectorEmployeeId ?? 0,
-          flowDetailTableName: only.tableName,
-          flowDetailId: only.id,
-        })
-      } catch (error) {
-        console.error('[NCR] 挤出计划扫码查询流程卡工序明细失败:', error)
-        return { type: 'ERROR', level: 'error', message: '扫码处理失败，请稍后重试' }
-      }
-    }
-
-    // 已选择某条工序明细：优先打开已有未完成单据，否则按明细入口创建新单据
-    try {
-      try {
-        const pack = await FlowScanApi.CheckDocumentState({
-          dbName: DEFAULT_DB_NAME,
-          user,
-          sourceType: FlowScanSourceType.ExtrusionPlanDetail,
-          scanForCode: normalized,
-          sourceDetailId: 0,
-          documentKind: FlowScanDocumentKind.Ncr,
-          state: FlowScanCheckState.PrevCompletedCurrentUnfinished,
-          includeTableRecords: true,
-        })
-
-        const ok = !!(pack as any)?.success
-        if (ok) {
-          const data = ((pack as any)?.data ?? (pack as any)?.Data ?? null) as any
-          const unapprovedId = pickUnapprovedDocumentIdAcrossFlowDetails(data, [picked], NCR_TABLE_NAME)
-          if (unapprovedId > 0) return { type: 'OPEN_BY_ID', id: unapprovedId }
-        }
-      } catch (error) {
-        console.error('[NCR] 挤出计划扫码查询已有单据失败（将继续尝试创建）:', error)
-      }
-
-      return this.createDefectiveReworkOrderByFlowDetail(user, {
-        inspectorEmployeeId: options?.inspectorEmployeeId ?? 0,
-        flowDetailTableName: picked.tableName,
-        flowDetailId: picked.id,
-      })
-    } catch (error) {
-      console.error('[NCR] 挤出计划扫码生成不合格返工单失败:', error)
-      return { type: 'ERROR', level: 'error', message: '扫码处理失败，请稍后重试' }
-    }
+          normalizeCode: (raw) => raw.match(/JCJH-\d{12}/i)?.[0] ?? raw,
+          logTag: '[NCR]',
+        },
+        pickedFlowDetail: options?.pickedFlowDetail ?? null,
+        context: { inspectorEmployeeId: options?.inspectorEmployeeId ?? 0 },
+      }),
+    )
   }
 
   /**
@@ -879,168 +779,39 @@ export type NcrScanFlowDetailCandidate = FlowDetailCandidate
       readonly pickedFlowDetail?: { tableName: string; id: number } | null
     },
   ): Promise<NcrScanExecuteResult> {
-    const rawScan = String(scanForCode ?? '').trim()
-    if (!rawScan) {
-      return { type: 'ERROR', level: 'warning', message: '扫描内容为空' }
-    }
-
-    const normalized = rawScan.match(/FGD-\d{12}/i)?.[0] ?? rawScan
-
-    const user = getErpUserFromStorage()
-    const picked = options?.pickedFlowDetail ?? null
-
-    if (!picked) {
-      try {
-        const pack = await FlowScanApi.CheckDocumentState({
-          dbName: DEFAULT_DB_NAME,
-          user,
-          sourceType: FlowScanSourceType.DefectiveReworkOrderDocument,
-          scanForCode: normalized,
-          sourceDetailId: 0,
-          documentKind: FlowScanDocumentKind.Ncr,
-          state: FlowScanCheckState.PrevCompletedCurrentUnfinished,
-          includeTableRecords: true,
-        })
-
-        const ok = !!(pack as any)?.success
-        const msg = String((pack as any)?.message ?? '').trim()
-        if (!ok) {
-          return { type: 'ERROR', level: 'error', message: msg || '查询流程卡工序明细失败' }
-        }
-
-        const data = ((pack as any)?.data ?? (pack as any)?.Data ?? null) as any
-        const parsedFlowDetails = parseFlowDetailsFromCheckDocumentStateData(data)
-        if (parsedFlowDetails.length === 0) {
-          return { type: 'ERROR', level: 'error', message: msg || '未找到当前可用的流程卡工序明细' }
-        }
-
-        if (parsedFlowDetails.length > 1) {
-          const unapprovedId = pickUnapprovedDocumentIdAcrossFlowDetails(data, parsedFlowDetails, NCR_TABLE_NAME)
-          if (unapprovedId > 0) return { type: 'OPEN_BY_ID', id: unapprovedId }
-          const candidates = await enrichFlowDetailCandidates(parsedFlowDetails)
-          return { type: 'NEED_PICK_FLOW_DETAIL', scanCode: normalized, candidates }
-        }
-
-        const only = parsedFlowDetails[0]
-        const unapprovedId = pickUnapprovedDocumentIdAcrossFlowDetails(data, [only], NCR_TABLE_NAME)
-        if (unapprovedId > 0) return { type: 'OPEN_BY_ID', id: unapprovedId }
-        return this.createDefectiveReworkOrderByFlowDetail(user, {
-          inspectorEmployeeId: options?.inspectorEmployeeId ?? 0,
-          flowDetailTableName: only.tableName,
-          flowDetailId: only.id,
-        })
-      } catch (error) {
-        console.error('[NCR] 返工单扫码查询流程卡工序明细失败:', error)
-        return { type: 'ERROR', level: 'error', message: '扫码处理失败，请稍后重试' }
-      }
-    }
-
-    // 已选择某条工序明细：优先打开已有未完成单据，否则按明细入口创建新单据
-    try {
-      try {
-        const pack = await FlowScanApi.CheckDocumentState({
-          dbName: DEFAULT_DB_NAME,
-          user,
-          sourceType: FlowScanSourceType.DefectiveReworkOrderDocument,
-          scanForCode: normalized,
-          sourceDetailId: 0,
-          documentKind: FlowScanDocumentKind.Ncr,
-          state: FlowScanCheckState.PrevCompletedCurrentUnfinished,
-          includeTableRecords: true,
-        })
-
-        const ok = !!(pack as any)?.success
-        if (ok) {
-          const data = ((pack as any)?.data ?? (pack as any)?.Data ?? null) as any
-          const unapprovedId = pickUnapprovedDocumentIdAcrossFlowDetails(data, [picked], NCR_TABLE_NAME)
-          if (unapprovedId > 0) return { type: 'OPEN_BY_ID', id: unapprovedId }
-        }
-      } catch (error) {
-        console.error('[NCR] 返工单扫码查询已有单据失败（将继续尝试创建）:', error)
-      }
-
-      return this.createDefectiveReworkOrderByFlowDetail(user, {
-        inspectorEmployeeId: options?.inspectorEmployeeId ?? 0,
-        flowDetailTableName: picked.tableName,
-        flowDetailId: picked.id,
-      })
-    } catch (error) {
-      console.error('[NCR] 返工单扫码生成不合格返工单失败:', error)
-      return { type: 'ERROR', level: 'error', message: '扫码处理失败，请稍后重试' }
-    }
-  }
-
-  private async createDefectiveReworkOrderByDailyPlanWithFlowDetail(
-    scanForCode: string,
-    user: UserInfo,
-    input: {
-      readonly inspectorEmployeeId?: number | null
-      readonly flowDetailTableName: string
-      readonly flowDetailId: number
-    },
-  ): Promise<NcrScanExecuteResult> {
-    try {
-      const pack = await QualityApi.CreateDefectiveReworkOrderByDailyPlanScanCode({
-        dbName: DEFAULT_DB_NAME,
-        user,
+    return this.toNcrScanResult(
+      await this.createScanFlow('flow-detail').run({
         scanForCode,
-        inspectorEmployeeid: input.inspectorEmployeeId ?? 0,
-        flowDetailTableName: input.flowDetailTableName,
-        flowDetailId: input.flowDetailId,
-      })
-
-      const msg = String((pack as any)?.message ?? '').trim()
-      const ok = !!(pack as any)?.success
-      if (!ok) {
-        return { type: 'ERROR', level: 'error', message: msg || '未能生成不合格返工单' }
-      }
-
-      const idRaw = (pack as any)?.data?.Id ?? (pack as any)?.data?.id
-      const id = normalizePositiveInt(idRaw)
-      if (!id) {
-        return { type: 'ERROR', level: 'error', message: '后端返回单据ID异常，无法打开' }
-      }
-
-      return { type: 'CREATED_BY_DAILY_PLAN', id, message: msg || undefined }
-    } catch (error) {
-      console.error('[NCR] 日计划扫码生成不合格返工单失败:', error)
-      return { type: 'ERROR', level: 'error', message: '扫码处理失败，请稍后重试' }
-    }
+        source: {
+          sourceType: FlowScanSourceType.DefectiveReworkOrderDocument,
+          normalizeCode: (raw) => raw.match(/FGD-\d{12}/i)?.[0] ?? raw,
+          logTag: '[NCR]',
+        },
+        pickedFlowDetail: options?.pickedFlowDetail ?? null,
+        context: { inspectorEmployeeId: options?.inspectorEmployeeId ?? 0 },
+      }),
+    )
   }
 
-  private async createDefectiveReworkOrderByFlowDetail(
-    user: UserInfo,
-    input: {
-      readonly inspectorEmployeeId?: number | null
-      readonly flowDetailTableName: string
-      readonly flowDetailId: number
-    },
-  ): Promise<NcrScanExecuteResult> {
-    try {
-      const pack = await QualityApi.CreateDefectiveReworkOrderByFlowDetail({
-        dbName: DEFAULT_DB_NAME,
-        user,
-        inspectorEmployeeid: input.inspectorEmployeeId ?? 0,
-        flowDetailTableName: input.flowDetailTableName,
-        flowDetailId: input.flowDetailId,
-      })
-
-      const msg = String((pack as any)?.message ?? '').trim()
-      const ok = !!(pack as any)?.success
-      if (!ok) {
-        return { type: 'ERROR', level: 'error', message: msg || '未能生成不合格返工单' }
-      }
-
-      const idRaw = (pack as any)?.data?.Id ?? (pack as any)?.data?.id
-      const id = normalizePositiveInt(idRaw)
-      if (!id) {
-        return { type: 'ERROR', level: 'error', message: '后端返回单据ID异常，无法打开' }
-      }
-
-      return { type: 'CREATED_BY_DAILY_PLAN', id, message: msg || undefined }
-    } catch (error) {
-      console.error('[NCR] 按流程卡明细生成不合格返工单失败:', error)
-      return { type: 'ERROR', level: 'error', message: '扫码处理失败，请稍后重试' }
+  /**
+   *
+   * 将 shared 扫码结果映射为 NCR 对外返回协议。
+   *
+   */
+  private toNcrScanResult(
+    r: ScanDocumentFlowResult<DefectiveReworkOrderDocument, DefectiveReworkOrderDetail>,
+  ): NcrScanExecuteResult {
+    switch (r.type) {
+      case 'OPEN_BY_ID':
+        return { type: 'OPEN_BY_ID', id: r.id }
+      case 'NEED_PICK_FLOW_DETAIL':
+        return { type: 'NEED_PICK_FLOW_DETAIL', scanCode: r.scanCode, candidates: r.candidates }
+      case 'CREATED_BY_ID':
+        return { type: 'CREATED_BY_DAILY_PLAN', id: r.id, message: r.message }
+      case 'DRAFT_LOADED':
+        return { type: 'ERROR', level: 'error', message: 'NCR 不应返回 DRAFT_LOADED' }
+      case 'ERROR':
+        return { type: 'ERROR', level: r.level, message: r.message }
     }
   }
 
@@ -1285,26 +1056,13 @@ async function readFileBase64(file: File): Promise<{ base64: string; mime?: stri
 
 /**
  *
- * 将可能的字符串/数字主键统一转换为“正整数”。
- * @param value 原始值。
- *
- */
-function normalizePositiveInt(value: unknown): number | null {
-  const n = typeof value === 'number' ? value : Number(value)
-  if (!Number.isFinite(n) || !Number.isInteger(n) || n <= 0) return null
-  if (n > Number.MAX_SAFE_INTEGER) return null
-  return n
-}
-
-/**
- *
  * 从保存返回包中提取单据主键（兼容多种返回结构）。
  * @remarks
  * - 对齐既有 ncrService.extractNcrBillId 的容错范围；\\n
  * - 兼容 DbChangedPackResult/ApiMessagePack 等多种结构。\\n
  *
  */
- function extractBillId(result: unknown): number | null {
+function extractBillId(result: unknown): number | null {
  if (!result || typeof result !== 'object') return null
  const pack = result as Record<string, unknown> & { objects?: Record<string, unknown> | null }
  const candidates: unknown[] = [
@@ -1324,6 +1082,44 @@ function normalizePositiveInt(value: unknown): number | null {
  }
  return null
  }
+
+/**
+ *
+ * 将保存阶段的异常/失败包统一为可展示结果。
+ * @param error 原始异常或失败包。
+ * @param fallback 默认失败文案。
+ *
+ */
+function buildSaveFailureResult(error: unknown, fallback: string): NcrSaveResult {
+  const resolved = resolveUserFacingErrorMessage(error, fallback)
+  if (resolved !== fallback) {
+    return { id: null, code: resolved, message: resolved }
+  }
+
+  const rawMessage = extractNumericSaveMessage(error)
+  const message = rawMessage || resolved
+  return { id: null, code: message, message }
+}
+
+/**
+ *
+ * 从保存返回包中提取数字型消息字段并转成可展示文本。
+ * @param error 保存结果或异常对象。
+ *
+ */
+function extractNumericSaveMessage(error: unknown): string {
+  if (!error || typeof error !== 'object') return ''
+  const record = error as Record<string, unknown>
+  for (const key of ['message', 'Message', 'errorMessage', 'ErrorMessage', 'msg', 'Msg']) {
+    const raw = record[key]
+    if (raw === undefined || raw === null) continue
+    if (typeof raw === 'number' || typeof raw === 'boolean') {
+      const text = String(raw).trim()
+      if (text) return text
+    }
+  }
+  return ''
+}
 
 /**
  *

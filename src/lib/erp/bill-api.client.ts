@@ -10,6 +10,7 @@
 import authFetch from '@/lib/auth/interceptor'
 import { API_BASE } from '@/lib/config'
 import type { ApiEnvelope, ApiError as AuthApiError } from '@/types/auth'
+import { extractUserFacingErrorMessage } from '@/lib/errors/user-facing-error'
 
 // ========================= 类型定义 =========================
 
@@ -136,7 +137,7 @@ function toQueryString(query?: Record<string, unknown>): string {
 function toUnifiedError(input: unknown, ctx: { status?: number; url?: string; action?: string }): Error {
   const api = input as Partial<AuthApiError & { code?: string; message?: string }>
   const code = api?.code || 'UNKNOWN_ERROR'
-  const message = api?.message || '请求失败，请稍后重试'
+  const message = extractUserFacingErrorMessage(input) || api?.message || '请求失败，请稍后重试'
   const err = new Error(message) as Error & { code?: string; status?: number; url?: string; action?: string }
   err.code = code
   err.status = ctx.status
@@ -145,23 +146,11 @@ function toUnifiedError(input: unknown, ctx: { status?: number; url?: string; ac
   return err
 }
 
-function pickErrorMessageFromJson(json: unknown): string | null {
+function getDbChangedPackSuccessFlag(json: unknown): boolean | null {
   if (!json || typeof json !== 'object') return null
   const any = json as Record<string, unknown>
-  const candidates: unknown[] = [
-    any.message,
-    (any as any).Message,
-    any.errorMessage,
-    (any as any).ErrorMessage,
-    any.error,
-    (any as any).Error,
-    any.msg,
-    (any as any).Msg,
-  ]
-  for (const v of candidates) {
-    if (typeof v === 'string' && v.trim()) return v.trim()
-  }
-  return null
+  const raw = any.isSuccess ?? any.IsSuccess
+  return typeof raw === 'boolean' ? raw : null
 }
 
 /**
@@ -275,7 +264,7 @@ export class BillApiClient {
       if (res.ok) return json as TRaw
 
       // 非 2xx：尽量提取 message
-      const msg = pickErrorMessageFromJson(json)
+      const msg = extractUserFacingErrorMessage(json)
       throw toUnifiedError({ code: 'UNKNOWN_ERROR', message: msg || `请求失败（HTTP ${status}）` }, { status, url, action })
     } catch (err) {
       // 统一二次包装（可能来自网络/超时/Abort）
@@ -288,11 +277,11 @@ export class BillApiClient {
         throw toUnifiedError({ code: 'NETWORK_TIMEOUT', message: '请求超时' }, { url, action })
       }
       if (hasCode(err)) {
-        throw err as Error
+        throw toUnifiedError(err, { url, action })
       }
-      const msg = typeof err === 'object' && err !== null && 'message' in err
+      const msg = extractUserFacingErrorMessage(err) || (typeof err === 'object' && err !== null && 'message' in err
         ? String((err as { message?: unknown }).message ?? '')
-        : ''
+        : '')
       throw toUnifiedError({ code: 'UNKNOWN_ERROR', message: msg || '网络异常' }, { url, action })
     } finally {
       clearTimeout(timeout)
@@ -360,10 +349,15 @@ export class BillApiClient {
         throw toUnifiedError({ code: env.code, message: env.message }, { status, url, action })
       }
 
+      const dbChangedFlag = getDbChangedPackSuccessFlag(json)
+      if (dbChangedFlag === false) {
+        throw toUnifiedError(json, { status, url, action })
+      }
+
       // 否则当作普通 JSON
       if (res.ok) return json as TRes
       // 尝试用 { message } 或 { error } 生成错误
-      const msg = pickErrorMessageFromJson(json)
+      const msg = extractUserFacingErrorMessage(json)
       throw toUnifiedError({ code: 'UNKNOWN_ERROR', message: msg || `请求失败（HTTP ${status}）` }, { status, url, action })
     } catch (err) {
       // 统一二次包装（可能来自网络/超时/Abort）
@@ -376,11 +370,11 @@ export class BillApiClient {
         throw toUnifiedError({ code: 'NETWORK_TIMEOUT', message: '请求超时' }, { url, action })
       }
       if (hasCode(err)) {
-        throw err as Error
+        throw toUnifiedError(err, { url, action })
       }
-      const msg = typeof err === 'object' && err !== null && 'message' in err
+      const msg = extractUserFacingErrorMessage(err) || (typeof err === 'object' && err !== null && 'message' in err
         ? String((err as { message?: unknown }).message ?? '')
-        : ''
+        : '')
       throw toUnifiedError({ code: 'UNKNOWN_ERROR', message: msg || '网络异常' }, { url, action })
     } finally {
       clearTimeout(timeout)

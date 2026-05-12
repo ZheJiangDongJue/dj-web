@@ -1,4 +1,5 @@
 import type { ApiEnvelope, ApiError } from '@/types/auth'
+import { extractUserFacingErrorMessage } from '@/lib/errors/user-facing-error'
 
 const AUTH_BASE = '/api/auth'
 
@@ -22,7 +23,8 @@ function toApiError(code: string | number | undefined, message?: string): ApiErr
     UNKNOWN_ERROR: '发生错误，请稍后重试',
   }
   const finalCode = typeof code === 'string' ? code : code != null ? String(code) : 'UNKNOWN_ERROR'
-  const finalMsg = map[finalCode] ?? message ?? map.UNKNOWN_ERROR
+  const normalizedMessage = typeof message === 'string' && message.trim() ? message.trim() : null
+  const finalMsg = normalizedMessage ?? map[finalCode] ?? map.UNKNOWN_ERROR
   // 不回显后端内部 message，避免泄露敏感信息
   void message
   return { code: finalCode, message: finalMsg }
@@ -62,7 +64,7 @@ async function request<T>(path: string, init: RequestInit): Promise<T> {
     }
 
     // HTTP 非 2xx 或业务失败：统一为 ApiError
-    throw toApiError(json.code, json.message ?? undefined)
+    throw toApiError(json.code, extractUserFacingErrorMessage(json) ?? json.message ?? undefined)
   } catch (e) {
     // Fetch 异常/超时/网络错误
     const err = e as unknown

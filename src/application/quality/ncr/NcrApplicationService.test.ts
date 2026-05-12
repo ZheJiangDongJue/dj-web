@@ -341,7 +341,7 @@ describe('NcrApplicationService', () => {
       localPhotoEvidence: [{ uri: 'x' } as any],
     })
 
-    expect(res).toEqual({ id: null, code: '读取失败' })
+    expect(res).toEqual({ id: null, code: '读取失败', message: '读取失败' })
     expect(saveWithFilesMock).toHaveBeenCalledTimes(0)
   })
 
@@ -363,7 +363,7 @@ describe('NcrApplicationService', () => {
       localPhotoEvidence: [{ uri: 'x' } as any],
     })
 
-    expect(res).toEqual({ id: null, code: '读取图片失败' })
+    expect(res).toEqual({ id: null, code: '读取图片失败', message: '读取图片失败' })
     expect(saveWithFilesMock).toHaveBeenCalledTimes(0)
   })
 
@@ -383,11 +383,11 @@ describe('NcrApplicationService', () => {
 
     await expect(
       service.save({ bill: { id: 0 } as any, details: [], localPhotoEvidence: [{ uri: 'x' } as any] }),
-    ).resolves.toEqual({ id: null, code: 'bad' })
+    ).resolves.toEqual({ id: null, code: 'bad', message: 'bad' })
 
     await expect(
       service.save({ bill: { id: 0 } as any, details: [], localPhotoEvidence: [{ uri: 'x' } as any] }),
-    ).resolves.toEqual({ id: null, code: '保存失败' })
+    ).resolves.toEqual({ id: null, code: '保存失败', message: '保存失败' })
   })
 
   it('save: 随单保存缺失成功标记时按失败处理并转字符串 ErrorMessage', async () => {
@@ -404,7 +404,7 @@ describe('NcrApplicationService', () => {
     const service = new NcrApplicationService({ delete: vi.fn() } as any)
     await expect(
       service.save({ bill: { id: 0 } as any, details: [], localPhotoEvidence: [{ uri: 'x' } as any] }),
-    ).resolves.toEqual({ id: null, code: '123' })
+    ).resolves.toEqual({ id: null, code: '123', message: '123' })
 
     expect(saveWithFilesMock).toHaveBeenCalledTimes(1)
   })
@@ -420,7 +420,7 @@ describe('NcrApplicationService', () => {
 
     await expect(
       service.save({ bill: { id: 0 } as any, details: [], localPhotoEvidence: [{ uri: 'x' } as any] }),
-    ).resolves.toEqual({ id: null, code: '读取图片失败' })
+    ).resolves.toEqual({ id: null, code: '读取图片失败', message: '读取图片失败' })
     expect(saveWithFilesMock).toHaveBeenCalledTimes(0)
   })
 
@@ -435,7 +435,7 @@ describe('NcrApplicationService', () => {
 
     await expect(
       service.save({ bill: { id: 0 } as any, details: [], localPhotoEvidence: [{ uri: 'x' } as any] }),
-    ).resolves.toEqual({ id: null, code: 'boom' })
+    ).resolves.toEqual({ id: null, code: 'boom', message: 'boom' })
     expect(saveWithFilesMock).toHaveBeenCalledTimes(0)
   })
 
@@ -450,7 +450,7 @@ describe('NcrApplicationService', () => {
 
     await expect(
       service.save({ bill: { id: 0 } as any, details: [], localPhotoEvidence: [{ uri: 'x' } as any] }),
-    ).resolves.toEqual({ id: null, code: '读取图片失败' })
+    ).resolves.toEqual({ id: null, code: '读取图片失败', message: '读取图片失败' })
     expect(saveWithFilesMock).toHaveBeenCalledTimes(0)
   })
 
@@ -483,7 +483,7 @@ describe('NcrApplicationService', () => {
       details: [],
       localPhotoEvidence: [{ uri: 'x' } as any],
     })
-    expect(bad).toEqual({ id: null, code: '图片Base64格式不正确' })
+    expect(bad).toEqual({ id: null, code: '图片Base64格式不正确', message: '图片Base64格式不正确' })
     expect(saveWithFilesMock).toHaveBeenCalledTimes(1)
   })
 
@@ -513,7 +513,7 @@ describe('NcrApplicationService', () => {
       localPhotoEvidence: [{ uri: 'x', fileName: '' } as any],
     })
 
-    expect(res).toEqual({ id: null, code: '读取图片失败' })
+    expect(res).toEqual({ id: null, code: '读取图片失败', message: '读取图片失败' })
     expect(saveWithFilesMock).toHaveBeenCalledTimes(0)
   })
 
@@ -527,8 +527,31 @@ describe('NcrApplicationService', () => {
 
     const service = new NcrApplicationService({ delete: vi.fn() } as any)
 
-    await expect(service.save({ bill: { id: 0 } as any, details: [] })).resolves.toEqual({ id: null })
-    await expect(service.save({ bill: { id: 0 } as any, details: [] })).resolves.toEqual({ id: null })
+    await expect(service.save({ bill: { id: 0 } as any, details: [] })).resolves.toEqual({
+      id: null,
+      code: '保存后未返回单据ID',
+      message: '保存后未返回单据ID',
+    })
+    await expect(service.save({ bill: { id: 0 } as any, details: [] })).resolves.toEqual({
+      id: null,
+      code: '保存后未返回单据ID',
+      message: '保存后未返回单据ID',
+    })
+  })
+
+  it('save: 无照片时后端异常消息会透传到 code/message', async () => {
+    const { BillApi } = await import('@/lib/erp/bill-api')
+    const { NcrApplicationService } = await import('./NcrApplicationService')
+
+    const saveMock = BillApi.GeneralBillSave as unknown as Mock
+    saveMock.mockRejectedValueOnce({ response: { data: { message: '库存不足' } } })
+
+    const service = new NcrApplicationService({ delete: vi.fn() } as any)
+    await expect(service.save({ bill: { id: 0 } as any, details: [] })).resolves.toEqual({
+      id: null,
+      code: '库存不足',
+      message: '库存不足',
+    })
   })
 
   it('save: 本地照片全部标记为 isRemoteOnly 时不走随单上传（保持旧行为）', async () => {
@@ -573,7 +596,7 @@ describe('NcrApplicationService', () => {
       localPhotoEvidence: [{ localFile: new MockFile('a.png', 'image/png') } as any],
     })
 
-    expect(res).toEqual({ id: null, code: '读取本地文件失败' })
+    expect(res).toEqual({ id: null, code: '读取本地文件失败', message: '读取本地文件失败' })
     expect(saveWithFilesMock).toHaveBeenCalledTimes(0)
   })
 
@@ -608,7 +631,7 @@ describe('NcrApplicationService', () => {
       localPhotoEvidence: [{ localFile: new MockFile('a.png', 'image/png') } as any],
     })
 
-    expect(res).toEqual({ id: null, code: '读取本地文件失败' })
+    expect(res).toEqual({ id: null, code: '读取本地文件失败', message: '读取本地文件失败' })
     expect(saveWithFilesMock).toHaveBeenCalledTimes(0)
   })
 
@@ -679,7 +702,7 @@ describe('NcrApplicationService', () => {
       localPhotoEvidence: [{ localFile: new MockFile('a.png', 'image/png') } as any],
     })
 
-    expect(res).toEqual({ id: null, code: '读取本地文件失败' })
+    expect(res).toEqual({ id: null, code: '读取本地文件失败', message: '读取本地文件失败' })
     expect(saveWithFilesMock).toHaveBeenCalledTimes(0)
   })
 
@@ -713,7 +736,7 @@ describe('NcrApplicationService', () => {
       localPhotoEvidence: [{ localFile: new MockFile('a.png', 'image/png') } as any],
     })
 
-    expect(res).toEqual({ id: null, code: '读取本地文件失败' })
+    expect(res).toEqual({ id: null, code: '读取本地文件失败', message: '读取本地文件失败' })
     expect(saveWithFilesMock).toHaveBeenCalledTimes(0)
   })
 

@@ -3,6 +3,12 @@ import { useCallback, useMemo, useState } from 'react';
 export interface SaveResult {
   id?: string | number | null;
   code?: string | null;
+  message?: string | null;
+}
+
+export interface DocumentActionResult {
+  success: boolean;
+  message?: string;
 }
 
 export interface DocumentApi {
@@ -18,19 +24,19 @@ export interface DocumentApi {
    * 调用后端：审批当前单据
    *
    */
-  callApprove?: (id: string | number) => Promise<{ success: boolean; message?: string }>;
+  callApprove?: (id: string | number) => Promise<DocumentActionResult>;
   /**
    *
    * 调用后端：反审批当前单据
    *
    */
-  callUnapprove?: (id: string | number) => Promise<{ success: boolean; message?: string }>;
+  callUnapprove?: (id: string | number) => Promise<DocumentActionResult>;
   /**
    *
    * 调用后端：删除当前单据
    *
    */
-  callDelete?: (id: string | number) => Promise<{ success: boolean; message?: string }>;
+  callDelete?: (id: string | number) => Promise<DocumentActionResult>;
 }
 
 export interface UseDocumentActionsOptions extends DocumentApi {
@@ -67,21 +73,21 @@ export interface DocumentActions {
    * @param id 可选；当不传时使用内部 state.id
    *
    */
-  approve: (id?: string | number | null) => Promise<boolean>;
+  approve: (id?: string | number | null) => Promise<DocumentActionResult>;
   /**
    *
    * 反审批文档；可显式传入 id 以避免闭包中旧状态导致的空值问题
    * @param id 可选；当不传时使用内部 state.id
    *
    */
-  unapprove: (id?: string | number | null) => Promise<boolean>;
+  unapprove: (id?: string | number | null) => Promise<DocumentActionResult>;
   /**
    *
    * 删除文档；可显式传入 id，默认读取内部 state.id
    * @param id 可选；当不传时使用内部 state.id
    *
    */
-  remove: (id?: string | number | null) => Promise<boolean>;
+  remove: (id?: string | number | null) => Promise<DocumentActionResult>;
   /**
    *
    * 当前状态
@@ -128,40 +134,40 @@ export function useDocumentActions(options: UseDocumentActionsOptions = {}): Doc
   }, [callSave]);
 
   // 审批：优先使用显式传入的 id，避免闭包读取到旧的 state.id
-  const approve = useCallback(async (overrideId?: string | number | null) => {
+  const approve = useCallback(async (overrideId?: string | number | null): Promise<DocumentActionResult> => {
     const effectiveId = overrideId ?? id;
-    if (!callApprove || effectiveId == null) return false;
+    if (!callApprove || effectiveId == null) return { success: false };
     try {
       setLoading(true);
       const res = await callApprove(effectiveId);
-      return !!res?.success;
+      return { success: !!res?.success, message: res?.message };
     } finally {
       setLoading(false);
     }
   }, [callApprove, id]);
 
   // 反审批：同上，支持显式 id
-  const unapprove = useCallback(async (overrideId?: string | number | null) => {
+  const unapprove = useCallback(async (overrideId?: string | number | null): Promise<DocumentActionResult> => {
     const effectiveId = overrideId ?? id;
-    if (!callUnapprove || effectiveId == null) return false;
+    if (!callUnapprove || effectiveId == null) return { success: false };
     try {
       setLoading(true);
       const res = await callUnapprove(effectiveId);
-      return !!res?.success;
+      return { success: !!res?.success, message: res?.message };
     } finally {
       setLoading(false);
     }
   }, [callUnapprove, id]);
 
   // 删除：支持显式 id
-  const remove = useCallback(async (overrideId?: string | number | null) => {
+  const remove = useCallback(async (overrideId?: string | number | null): Promise<DocumentActionResult> => {
     const effectiveId = overrideId ?? id;
-    if (!callDelete || effectiveId == null) return false;
+    if (!callDelete || effectiveId == null) return { success: false };
     try {
       setLoading(true);
       const res = await callDelete(effectiveId);
       if (res?.success) setId(null);
-      return !!res?.success;
+      return { success: !!res?.success, message: res?.message };
     } finally {
       setLoading(false);
     }

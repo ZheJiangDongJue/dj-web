@@ -12,6 +12,7 @@ import { fetchActiveEmployees } from '@/lib/erp/employee'
 import { fetchWorkTypes } from '@/lib/erp/type-of-work'
 import type { DebugMenuItem } from '@/components/molecules/DebugFab'
 import { DEFAULT_DB_NAME } from '@/lib/config'
+import { formatActionErrorMessage } from '@/lib/errors/user-facing-error'
 import { NcrApplicationService, type NcrScanExecuteResult, type NcrScanFlowDetailCandidate } from '@/application/quality/ncr/NcrApplicationService'
 import { AppServicesContext, NcrApplicationServiceToken } from '@/infrastructure/di/AppServicesProvider'
 import { DefectiveReworkOrderRepositoryImpl } from '@/infrastructure/repositories/quality/DefectiveReworkOrderRepositoryImpl'
@@ -413,7 +414,7 @@ export class NcrViewModel extends QualityDocumentBase<DefectiveReworkOrderDocume
           // 上传成功：清理本地照片证据，避免后续重复上传
           this.clearLocalPhotoEvidence()
         }
-        return { id: res.id, code: res.code }
+        return { id: res.id, code: res.code, message: res.message ?? res.code }
       },
       callApprove: async (id) => {
         return this.appService.approve(Number(id), { bill: this.bill, details: this.details })
@@ -519,7 +520,7 @@ export class NcrViewModel extends QualityDocumentBase<DefectiveReworkOrderDocume
       return true
     } catch (error) {
       console.error('[NCR] 生成不合格返工单草稿失败:', error)
-      try { toast.error('生成草稿失败，请稍后重试') } catch { }
+      try { toast.error(formatActionErrorMessage('生成草稿', error, '请稍后重试')) } catch { }
       return false
     }
   }
@@ -994,7 +995,7 @@ export class NcrViewModel extends QualityDocumentBase<DefectiveReworkOrderDocume
       await this.handleScan(code)
     } catch (err) {
       console.error('[NCR] 手动输入/扫码失败:', err)
-      try { toast.error('扫码处理失败，请稍后重试') } catch { }
+      try { toast.error(formatActionErrorMessage('扫码处理', err, '请稍后重试')) } catch { }
     }
   }
 
@@ -1240,7 +1241,7 @@ export class NcrViewModel extends QualityDocumentBase<DefectiveReworkOrderDocume
       }
 
       // 兜底：保持弹窗不关闭，仅提示不支持
-      try { toast.error('生成失败，请稍后重试') } catch { }
+      try { toast.error('生成失败：未返回可处理结果') } catch { }
     } finally {
       this.dailyPlanPickBusy = false
       this.emit()

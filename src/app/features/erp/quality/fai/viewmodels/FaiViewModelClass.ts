@@ -16,6 +16,7 @@ import { handleScanResultPayload } from '@/app/features/erp/quality/shared/scanE
 import { type ScanResultPayload, scanQRCode } from '@/lib/android-bridge'
 import { fetchMaterials } from '@/lib/erp/material'
 import { fetchWorkTypes } from '@/lib/erp/type-of-work'
+import { formatActionErrorMessage, resolveUserFacingErrorMessage } from '@/lib/errors/user-facing-error'
 import {
   FirstInspectionApplicationService,
   type FirstInspectionActionResult,
@@ -224,9 +225,9 @@ export class FaiViewModel extends QualityDocumentBase<FirstInspectionDocument, F
         const res = await this.appService.save({ bill: this.bill, details: this.details })
         this.lastApproveResult = null
         if (!res.id) {
-          return { id: null, code: res.message }
+          return { id: null, code: res.message, message: res.message }
         }
-        return { id: res.id }
+        return { id: res.id, message: res.message }
       },
       callApprove: async (id) => {
         const res = await this.appService.approve(Number(id), { bill: this.bill, details: this.details })
@@ -1121,7 +1122,7 @@ export class FaiViewModel extends QualityDocumentBase<FirstInspectionDocument, F
         return
       }
 
-      try { toast.error('生成失败，请稍后重试') } catch { }
+      try { toast.error('生成失败：未返回可处理结果') } catch { }
     } finally {
       this.dailyPlanPickBusy = false
       this.emit()
@@ -1258,7 +1259,7 @@ export class FaiViewModel extends QualityDocumentBase<FirstInspectionDocument, F
       return true
     } catch (e) {
       console.error('[FAI] 职员扫码处理失败:', e)
-      try { toast.error('设置检验员失败，请稍后重试') } catch { }
+      try { toast.error(formatActionErrorMessage('设置检验员', e, '请稍后重试')) } catch { }
       return true
     }
   }
@@ -1311,8 +1312,8 @@ export class FaiViewModel extends QualityDocumentBase<FirstInspectionDocument, F
       return result
     } catch (err) {
       console.error('[FAI] 扫码处理失败:', err)
-      try { toast.error('扫码处理失败，请稍后重试') } catch { }
-      const message = err instanceof Error && err.message ? err.message : '扫码处理失败'
+      try { toast.error(formatActionErrorMessage('扫码处理', err, '请稍后重试')) } catch { }
+      const message = resolveUserFacingErrorMessage(err, '扫码处理失败')
       return { type: 'ERROR', level: 'error', message }
     }
   }
@@ -1351,7 +1352,7 @@ export class FaiViewModel extends QualityDocumentBase<FirstInspectionDocument, F
       try { await this.processScanCode(code) } catch { }
     } catch (err) {
       console.error('[FAI] 手动输入处理失败:', err)
-      try { toast.error('手动输入处理失败，请稍后重试') } catch { }
+      try { toast.error(formatActionErrorMessage('手动输入处理', err, '请稍后重试')) } catch { }
     }
   }
 
