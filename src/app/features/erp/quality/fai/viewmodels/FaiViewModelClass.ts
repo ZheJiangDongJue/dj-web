@@ -1170,6 +1170,8 @@ export class FaiViewModel extends QualityDocumentBase<FirstInspectionDocument, F
     const normDetails = Array.isArray(details)
       ? (details as any[]).map((d) => this.normalizeCaseInsensitive(d, FaiViewModel.detailNormalizeTemplate))
       : []
+    const draftId = this.getDocumentBillId(doc ?? normDoc)
+    this.syncCurrentBillId(draftId > 0 ? draftId : null)
 
     // 2) 推送到视图层，并补齐派生字段。
     this.replaceState({
@@ -1179,10 +1181,9 @@ export class FaiViewModel extends QualityDocumentBase<FirstInspectionDocument, F
     })
     this.updateProcessNameFromBill()
     if (!this.processName) this.deriveProcessName()
-    this.currentId = this.getCurrentBillId()
 
     const notice = String(msg ?? '').trim()
-    const id = this.currentId ?? this.getCurrentBillId()
+    const id = draftId
     if (id > 0) {
       try { await this.refresh(id, { silent: true } as any) } catch { }
       if (scanCode && !this.isScanListenerActive()) {

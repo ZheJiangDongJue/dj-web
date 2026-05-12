@@ -174,4 +174,33 @@ describe('FaiViewModelClass', () => {
     expect(ok).toBe(true)
     expect((vm.bill as any).DocumentStatus).toBe(DocumentStatus.已审批)
   })
+
+  test('processScanCode 在草稿未携带 id 时不应沿用旧单据 id 回刷', async () => {
+    vi.resetModules()
+    const { FaiViewModel } = await import('./FaiViewModelClass')
+
+    const appService = {
+      save: vi.fn(),
+      approve: vi.fn(),
+      unapprove: vi.fn(),
+      delete: vi.fn(),
+      fetchById: vi.fn(),
+      executeScan: vi.fn(async () => ({
+        type: 'DRAFT_LOADED',
+        document: { id: 0 } as any,
+        details: [{} as any],
+        message: 'ok',
+      })),
+      createDraftByDailyPlanDetailId: vi.fn(),
+    } as unknown as FirstInspectionApplicationService
+
+    const vm = new FaiViewModel(appService)
+    ;(vm as any).bridge.docActions.setId(11)
+    const refreshSpy = vi.spyOn(vm, 'refresh').mockResolvedValue(undefined)
+
+    await vm.processScanCode('RJH-001')
+
+    expect(refreshSpy).not.toHaveBeenCalled()
+    expect((vm as any).bridge.docActions.state.id).not.toBe(11)
+  })
 })

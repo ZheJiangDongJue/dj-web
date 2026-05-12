@@ -693,6 +693,41 @@ export class DocumentBase<TDocument, TDetail> implements DocumentBaseLike<TDocum
 
   /**
    *
+   * 仅从单据对象本身提取主键，不回退到桥接状态。
+   * @remarks
+   * - 适用于“新草稿/刚加载单据”这类场景，避免把上一张单据的 state.id 误当成当前单据；
+   * - 若文档尚未带出主键，则返回 0。
+   *
+   */
+  protected getDocumentBillId(document: unknown): number {
+    const record = (document ?? {}) as Record<string, unknown>
+    const candidates = ['id', 'Id', 'ID', 'billId', 'BillId', 'billid'] as const
+    for (const key of candidates) {
+      const n = toNumericId(record[key] as any)
+      if (n) return n
+    }
+    return 0
+  }
+
+  /**
+   *
+   * 同步当前桥接主键。
+   * @remarks
+   * - 传入 null 表示清空当前单据，避免后续流程复用过期 state.id；
+   * - 该方法只负责写入动作状态，不改动表头/明细本身。
+   *
+   */
+  protected syncCurrentBillId(id: number | null): void {
+    if (!this.bridge) return
+    try {
+      this.bridge.docActions.setId(id)
+    } catch {
+      // 保护性更新：不阻断单据载入流程
+    }
+  }
+
+  /**
+   *
    * 重置文档与明细为默认值，并清空当前 ID。
    *
    */

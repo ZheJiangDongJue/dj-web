@@ -198,6 +198,28 @@ describe('FqcViewModelClass', () => {
     expect(toast.success).not.toHaveBeenCalled()
   })
 
+  test('processScanCode 在草稿未携带 id 时不应沿用旧单据 id 回刷', async () => {
+    const doc = createDocument()
+    ;(doc as any).id = 0
+    const detail = createDetail()
+    const appService = createMockAppService({
+      executeScan: vi.fn(async () => ({
+        type: 'DRAFT_LOADED',
+        document: doc,
+        details: [detail],
+        message: 'ok',
+      })),
+    })
+    const vm = new FqcViewModel(appService)
+    ;(vm as any).bridge.docActions.setId(11)
+    const refreshSpy = vi.spyOn(vm, 'refresh').mockResolvedValue(undefined)
+
+    await vm.processScanCode('RJH-001')
+
+    expect(refreshSpy).not.toHaveBeenCalled()
+    expect((vm as any).bridge.docActions.state.id).not.toBe(11)
+  })
+
   test('handleRefresh 会调用应用服务 fetchById', async () => {
     const nextDoc = createDocument()
     nextDoc.Code = 'FQC-001'
