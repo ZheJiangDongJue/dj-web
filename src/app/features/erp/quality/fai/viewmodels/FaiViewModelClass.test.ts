@@ -203,4 +203,34 @@ describe('FaiViewModelClass', () => {
     expect(refreshSpy).not.toHaveBeenCalled()
     expect((vm as any).bridge.docActions.state.id).not.toBe(11)
   })
+
+  test('processScanCode：扫码设置检验员时 toast 文案应兜底不为空（name 小写场景）', async () => {
+    vi.resetModules()
+    const { toast } = await import('sonner')
+    const { fetchLookup } = await import('@/lib/erp/lookup-core')
+    const { FaiViewModel } = await import('./FaiViewModelClass')
+
+    ;(fetchLookup as any).mockResolvedValue([{ id: 9, Name: '', name: '检验员小写字段', CodeForScan: 'ZY-01' }])
+
+    const appService = {
+      save: vi.fn(),
+      approve: vi.fn(),
+      unapprove: vi.fn(),
+      delete: vi.fn(),
+      fetchById: vi.fn(),
+      executeScan: vi.fn(async () => ({ type: 'SET_INSPECTOR', code: 'ZY-01' })),
+      createDraftByDailyPlanDetailId: vi.fn(),
+    } as unknown as FirstInspectionApplicationService
+
+    const vm = new FaiViewModel(appService)
+
+    await vm.processScanCode('ZY-01')
+
+    expect((appService as any).executeScan).toHaveBeenCalledWith('ZY-01')
+    expect(((vm.bill as any).Employeeid)).toBe(9)
+    expect((toast.success as any).mock.calls.length).toBeGreaterThan(0)
+    const msg = String((toast.success as any).mock.calls?.[0]?.[0] ?? '')
+    expect(msg).toContain('已设置检验员：')
+    expect(msg.trim().endsWith('：')).toBe(false)
+  })
 })

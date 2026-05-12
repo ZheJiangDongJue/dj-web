@@ -279,6 +279,23 @@ describe('FqcViewModelClass', () => {
     expect((vm.bill as any).Employeeid).toBe(9)
   })
 
+  test('handleScan：职员联查返回 name 小写且 Name 为空时，toast 应兜底不为空', async () => {
+    const { fetchLookup } = await import('@/lib/erp/lookup-core')
+    ;(fetchLookup as Mock).mockResolvedValue([{ id: 9, Name: '', name: '检验员小写字段', CodeForScan: 'ZY-01' }])
+    const appService = createMockAppService({
+      executeScan: vi.fn(async () => ({ type: 'SET_INSPECTOR', code: 'ZY-01' })),
+    })
+    const vm = new FqcViewModel(appService)
+
+    await vm.processScanCode('ZY-01')
+
+    const { toast } = (await import('sonner')) as any
+    expect(toast.success).toHaveBeenCalled()
+    const msg = String((toast.success as any).mock.calls?.[0]?.[0] ?? '')
+    expect(msg).toContain('已设置检验员：')
+    expect(msg.trim().endsWith('：')).toBe(false)
+  })
+
   test('handleJudgeChange 在禁用状态下直接返回', () => {
     const vm = new FqcViewModel(createMockAppService())
     vm.status = DocumentStatus.已审批

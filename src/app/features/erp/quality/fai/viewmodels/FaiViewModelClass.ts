@@ -1220,7 +1220,10 @@ export class FaiViewModel extends QualityDocumentBase<FirstInspectionDocument, F
         return true
       }
       this.setBill('Employeeid', employeeId)
-      try { toast.success(`已设置检验员：${employeeId}`) } catch { }
+      // 通过 employeeId 直接设置时，尽可能展示“姓名”；若暂时无法获取则兜底展示 ID，避免 toast 出现空白。
+      const fromOptions = (this.inspectorOptions ?? []).find((o) => String(o?.value ?? '') === String(employeeId))
+      const label = String(fromOptions?.label ?? '').trim()
+      try { toast.success(`已设置检验员：${label || employeeId}`) } catch { }
       return true
     }
 
@@ -1255,8 +1258,16 @@ export class FaiViewModel extends QualityDocumentBase<FirstInspectionDocument, F
         if (codeForScan) this.redeliverScanCodeToActive(codeForScan)
         return true
       }
-      this.setBill('Employeeid', empId)
-      try { toast.success(`已设置检验员：${(emp as any)?.Name ?? ''}`) } catch { }
+        this.setBill('Employeeid', empId)
+      // 后端联查记录在不同接口/版本下可能是 Name 或 name；若取不到则回退到条码或 ID，避免 toast 出现“已设置检验员：”空内容。
+      const name =
+        String(((emp as any)?.Name ?? (emp as any)?.name ?? '') as any).trim()
+      const code =
+        String(((emp as any)?.CodeForScan ?? (emp as any)?.codeForScan ?? '') as any).trim()
+      const fromOptions = (this.inspectorOptions ?? []).find((o) => String(o?.value ?? '') === String(empId))
+      const optionLabel = String(fromOptions?.label ?? '').trim()
+      const toastText = name || optionLabel || code || String(empId)
+      try { toast.success(`已设置检验员：${toastText}`) } catch { }
       return true
     } catch (e) {
       console.error('[FAI] 职员扫码处理失败:', e)
