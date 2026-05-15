@@ -1037,8 +1037,12 @@ export class NcrViewModel extends QualityDocumentBase<DefectiveReworkOrderDocume
         return result
       }
       this.updateBill({ Employeeid: result.employeeId })
+      // 优先展示姓名：应用层返回的 employeeName -> 下拉选项映射；最后再回退到 ID。
       const name = String(result.employeeName ?? '').trim()
-      try { toast.success(name ? `已设置检验员：${name}` : `已设置检验员：${result.employeeId}`) } catch { }
+      const fromOptions = (this.inspectorOptions ?? []).find((o) => String(o?.value ?? '') === String(result.employeeId))
+      const optionLabel = String(fromOptions?.label ?? '').trim()
+      const toastText = name || optionLabel || String(result.employeeId)
+      try { toast.success(`已设置检验员：${toastText}`) } catch { }
       return result
     }
 

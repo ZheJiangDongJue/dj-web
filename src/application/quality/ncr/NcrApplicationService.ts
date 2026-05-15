@@ -841,7 +841,8 @@ export type NcrScanFlowDetailCandidate = FlowDetailCandidate
     const empId = normalizePositiveInt(empIdRaw)
     if (!empId) return { ok: false, reason: 'INVALID_EMPLOYEE_ID' }
 
-    const name = String((emp as any)?.Name ?? '').trim()
+    // 兼容不同后端序列化风格：可能返回 Name 或 name。
+    const name = String((emp as any)?.Name ?? (emp as any)?.name ?? '').trim()
     return { ok: true, employee: { id: empId, name } }
   }
 
