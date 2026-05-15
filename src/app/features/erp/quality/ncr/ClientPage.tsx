@@ -771,6 +771,53 @@ function HeaderSection({
     [onChange, toNonNegInt],
   )
 
+  /**
+   *
+   * 当前两个“返工工序”字段的受控值（统一标准化为字符串 id）。
+   * - 仅接受正整数 id，空值/非法值统一归一为空串，避免下拉受控态抖动。
+   *
+   */
+  const reworkProcessId = (() => {
+    const n = Number(view.ReworkTypeofWorkid)
+    return Number.isFinite(n) && n > 0 ? String(n) : ''
+  })()
+
+  const reworkProcess2Id = (() => {
+    const n = Number(view.ReworkTypeofWork2id)
+    return Number.isFinite(n) && n > 0 ? String(n) : ''
+  })()
+
+  /**
+   *
+   * “返工工序”候选：排除“返工工序2”已选项，保证两者互斥。
+   * @remarks
+   * - 若当前值与对侧值相同（历史数据可能存在），保留当前值以维持受控显示稳定；
+   * - 用户后续重新选择时将无法再选到重复项。
+   *
+   */
+  const reworkProcessOptions = useMemo(
+    () =>
+      (badProcessOptions ?? []).filter(
+        (option) => option.value !== reworkProcess2Id || option.value === reworkProcessId,
+      ),
+    [badProcessOptions, reworkProcess2Id, reworkProcessId],
+  )
+
+  /**
+   *
+   * “返工工序2”候选：排除“返工工序”已选项，保证两者互斥。
+   * @remarks
+   * - 与 reworkProcessOptions 形成双向过滤规则。
+   *
+   */
+  const reworkProcess2Options = useMemo(
+    () =>
+      (badProcessOptions ?? []).filter(
+        (option) => option.value !== reworkProcessId || option.value === reworkProcess2Id,
+      ),
+    [badProcessOptions, reworkProcessId, reworkProcess2Id],
+  )
+
   return (
     <div className="w-full space-y-1.5">
       {/* 第一行：单据编号、物料编码、状态（状态此处仅示例文本，可扩展为主题色） */}
@@ -880,7 +927,7 @@ function HeaderSection({
               ReworkTypeofWorkid: v ? Number(v) : 0,
             } as Partial<DefectiveReworkOrderDocument>)
           }
-          options={badProcessOptions}
+          options={reworkProcessOptions}
           ariaLabel="返工工序"
           style={shortInputStyle}
           disabled={readOnly}
@@ -893,7 +940,7 @@ function HeaderSection({
               ReworkTypeofWork2id: v ? Number(v) : 0,
             } as Partial<DefectiveReworkOrderDocument>)
           }
-          options={badProcessOptions}
+          options={reworkProcess2Options}
           ariaLabel="返工工序2"
           style={shortInputStyle}
           disabled={readOnly}
