@@ -382,6 +382,19 @@ export function Combobox({
     updateValue(undefined, undefined)
   }
 
+  /**
+   *
+   * 判断是否应在弹层打开时阻止默认自动聚焦。
+   * - 仅在触屏粗指针设备（常见于手机/平板）上返回 true；
+   * - 桌面端保持默认自动聚焦，以保留键盘搜索体验。
+   *
+   */
+  function shouldPreventOpenAutoFocus(): boolean {
+    if (typeof window === "undefined") return false
+    if (typeof window.matchMedia !== "function") return false
+    return window.matchMedia("(pointer: coarse)").matches
+  }
+
   return (
     <Popover open={open} onOpenChange={setOpen}>
       {name ? (
@@ -430,7 +443,18 @@ export function Combobox({
 
       <PopoverContent
         align="start"
-        className={cn("p-0 min-w-56", contentClassName)}
+        side="bottom"
+        collisionPadding={8}
+        className={cn(
+          "p-0 min-w-56 max-h-[min(var(--radix-popover-content-available-height),20rem)] overflow-hidden",
+          contentClassName
+        )}
+        onOpenAutoFocus={(event) => {
+          if (!shouldPreventOpenAutoFocus()) return
+          // 移动端（尤其 Android WebView）自动聚焦搜索框会拉起输入法，导致弹层在键盘弹出时发生显著位移。
+          // 这里阻止默认自动聚焦，改为用户主动点击搜索框再输入，以保证下拉可见区域稳定。
+          event.preventDefault()
+        }}
       >
         <Command className="p-0">
           <CommandInput
@@ -438,7 +462,10 @@ export function Combobox({
             value={searchValue}
             onValueChange={setSearchValue}
           />
-          <CommandList onScroll={handleListScroll}>
+          <CommandList
+            onScroll={handleListScroll}
+            className="max-h-[calc(min(var(--radix-popover-content-available-height),20rem)-2.25rem)] overscroll-contain [touch-action:pan-y]"
+          >
             <CommandEmpty>{emptyMessage}</CommandEmpty>
             <CommandGroup>
               {visibleOptions.map(({ option: opt, searchable }) => {

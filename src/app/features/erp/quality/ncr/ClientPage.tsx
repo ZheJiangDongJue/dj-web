@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 import styles from './ncr.module.css'
 import DocumentPageLayout from '@/app/features/common/documents/DocumentPageLayout'
 import ApproveFooterBar from '@/app/features/common/documents/ApproveFooterBar'
+import DocumentHeaderActions from '@/app/features/common/documents/DocumentHeaderActions'
 import { DetailsCardList } from '@/components/molecules/DetailsCardList'
 import { ImageOverlayViewer, type ImageOverlayViewerToolbarProps } from '@/components/molecules/ImageOverlayViewer'
 import { CloseIconButton } from '@/components/ui/close-icon-button'
@@ -549,10 +550,13 @@ export default function ClientPage({
         <>
           {/* 顶部操作按钮：新增 / 删除 / 刷新 */}
           <div className="mt-2">
-            <HeaderActions
+            <DocumentHeaderActions
               onCreate={() => vm.createNewBill()}
               onDelete={() => void vm.handleDeleteBill()}
               onRefresh={() => void vm.handleRefresh()}
+              deleteBusy={vm.busyActionName === '删除'}
+              refreshBusy={vm.busyActionName === '刷新'}
+              globalBusy={vm.actionBusy && vm.busyActionName !== '删除' && vm.busyActionName !== '刷新'}
             />
           </div>
           <QualityPageWarmupStrip state={warmupState} className="mt-2" />
@@ -627,10 +631,13 @@ export default function ClientPage({
         <>
           {/* 调试功能悬浮按钮：提供“模拟扫码” */}
           <DebugFab visible={isPagePreparing ? false : undefined} menuItems={debugMenuItems} />
-          {/* 底部审批操作条：左“审批”/右“反审批” */}
+          {/* 底部审批操作条：左”审批”/右”反审批” */}
           <ApproveFooterBar
             approveDisabled={isPagePreparing || vm.approveDisabled}
             unapproveDisabled={isPagePreparing || vm.unapproveDisabled}
+            approveBusy={vm.busyActionName === '审批'}
+            unapproveBusy={vm.busyActionName === '反审批'}
+            globalBusy={vm.actionBusy && vm.busyActionName !== '审批' && vm.busyActionName !== '反审批'}
             onApprove={() => {
               void vm.handleApprove()
             }}
@@ -977,54 +984,6 @@ function getStatusTextClass(status: number): string {
   if (hasStatusFlag(status, DocumentStatus.未审批)) return 't-text-error'
   if (hasStatusFlag(status, DocumentStatus.已审批)) return 't-text-success'
   return 't-text-primary'
-}
-
-/**
- *
- * 顶部操作按钮区：提供“新增/删除/刷新”。
- * - 与 FQC 页面保持一致的视觉与行为。
- *
- */
-function HeaderActions({
-  onCreate,
-  onDelete,
-  onRefresh,
-}: {
-  onCreate: () => void | Promise<void>
-  onDelete: () => void | Promise<void>
-  onRefresh: () => void | Promise<void>
-}) {
-  return (
-    <div
-      className="grid grid-cols-3 gap-0 w-full border border-[#797979]"
-      style={{ height: '24px', minHeight: '24px' }}
-    >
-      <button
-        type="button"
-        aria-label="新增"
-        className="w-full h-full leading-[24px] px-0 py-0 text-[12px] rounded-none bg-[#0079FE] text-white"
-        onClick={() => void onCreate()}
-      >
-        新增
-      </button>
-      <button
-        type="button"
-        aria-label="删除"
-        className="w-full h-full leading-[24px] px-0 py-0 text-[12px] rounded-none border-l border-[#797979]"
-        onClick={() => void onDelete()}
-      >
-        删除
-      </button>
-      <button
-        type="button"
-        aria-label="刷新"
-        className="w-full h-full leading-[24px] px-0 py-0 text-[12px] rounded-none border-l border-[#797979]"
-        onClick={() => void onRefresh()}
-      >
-        刷新
-      </button>
-    </div>
-  )
 }
 
 interface PhotoPreviewMeta {

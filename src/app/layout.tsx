@@ -1,5 +1,4 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import ThemeProvider from "@/components/theme/ThemeProvider";
 import DensityClient from "@/components/responsive/DensityClient";
@@ -8,16 +7,6 @@ import { Toaster } from "@/components/ui/sonner";
 import AppServicesProvider from "@/infrastructure/di/AppServicesProvider";
 import { RouteTransitionProvider } from "@/components/transition/RouteTransitionContext";
 import { TopProgressBar } from "@/components/transition/TopProgressBar";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
 
 export const metadata: Metadata = {
   title: "东爵线缆",
@@ -48,7 +37,7 @@ export default function RootLayout({
         {/* 在任何应用 JS 执行前设置主题与密度，避免闪白 */}
         <ThemeInitScript />
       </head>
-      <body className={`${geistSans.variable} ${geistMono.variable} min-h-dvh antialiased`}>
+      <body className="min-h-dvh antialiased">
         <ThemeProvider>
           <RouteTransitionProvider>
             <TopProgressBar />

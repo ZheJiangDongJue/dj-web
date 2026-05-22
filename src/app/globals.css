@@ -59,6 +59,13 @@ body {
 }
 
 :root {
+  /*
+   * 字体变量定义（离线可构建）
+   * 维持与 --font-geist-sans / --font-geist-mono 的命名兼容，
+   * 以避免 next/font/google 在网络受限环境下构建失败。
+   */
+  --font-geist-sans: "PingFang SC", "Microsoft YaHei", "Noto Sans SC", "Segoe UI", sans-serif;
+  --font-geist-mono: "JetBrains Mono", "Cascadia Mono", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
   --radius: 0.625rem;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);

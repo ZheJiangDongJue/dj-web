@@ -7,35 +7,35 @@ import { ValueObject } from '@/domain/shared/value-object'
  * 该枚举用于描述 <c>ReworkOrderStatus</c> 内部的位含义：按位或组合。
  *
  */
- export enum ReworkOrderStatusFlag {
+export enum ReworkOrderStatusFlag {
 
 /**
  *
- * 已冻结（1）。
+ * 已审批（1）。
  *
  */
- Frozen = 1,
+ Approved = 1 << 0,
+ 
+/**
+ *
+ * 已冻结（2）。
+ *
+ */
+ Frozen = 1 << 1,
 
 /**
  *
- * 已结案（2）。
+ * 已结案（4）。
  *
  */
- Closed = 2,
+ Closed = 1 << 2,
 
 /**
  *
- * 已作废（4）。
+ * 已作废（8）。
  *
  */
- Voided = 4,
-
-/**
- *
- * 已审批（8）。
- *
- */
- Approved = 8,
+ Voided = 1 << 3,
  }
 
 /**
@@ -231,4 +231,3 @@ import { ValueObject } from '@/domain/shared/value-object'
     }
   }
 }
-

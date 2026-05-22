@@ -309,6 +309,87 @@ export class DocumentBase<TDocument, TDetail> implements DocumentBaseLike<TDocum
   private activeScanHandler: ScanResultHandler | null = null
   private loadSeq = 0
 
+  /**
+   *
+   * 当前是否有“远程耗时操作”正在执行。
+   * @remarks
+   * - 由 runBusyAction 维护：在执行期间为 true，结束后回 false；
+   * - 视图层可据此禁用按钮、显示加载文本/spinner。
+   *
+   */
+  public actionBusy = false
+
+  /**
+   *
+   * 当前正在执行的操作名（用于按钮文本切换，例如 "审批"/"反审批"/"删除"/"刷新"）。
+   * - 与 actionBusy 同步维护，actionBusy=false 时为 null。
+   *
+   */
+  public busyActionName: string | null = null
+
+  /**
+   *
+   * 统一封装“远程耗时操作”的执行壳，为 UI 提供一致的 busy 反馈与防重入。
+   * @remarks
+   * - 进入时：actionBusy=true，busyActionName=actionName，emit 通知订阅者；
+   * - 可选显示 sonner 的 loading toast；操作期间通知用户“正在处理”；
+   * - 结束（无论成功/失败）：dismiss loading toast，actionBusy=false，busyActionName=null，emit；
+   * - 默认开启“跳过重复点击”：若已有 busy 操作进行，直接返回 undefined，避免并发请求；
+   * - 不会捕获/吞掉异常：仍然由调用方处理（与原 handleApprove 等流程保持一致）。
+   * @param actionName 操作名（例如 "审批"/"反审批"/"删除"）。
+   * @param task 实际的异步任务。
+   * @param opts 可选参数：自定义 loading 文本/是否显示 toast/是否跳过 busy。
+   * @returns 任务的返回值；若因 busy 跳过则返回 undefined。
+   *
+   */
+  public async runBusyAction<T>(
+    actionName: string,
+    task: () => Promise<T>,
+    opts?: {
+      loadingMessage?: string
+      showLoadingToast?: boolean
+      skipIfBusy?: boolean
+    },
+  ): Promise<T | undefined> {
+    const skipIfBusy = opts?.skipIfBusy !== false
+    if (skipIfBusy && this.actionBusy) {
+      return undefined
+    }
+    this.actionBusy = true
+    this.busyActionName = actionName
+    this.emit()
+
+    const showLoadingToast = opts?.showLoadingToast !== false
+    let loadingToastId: string | number | undefined
+    if (showLoadingToast) {
+      try {
+        // 兼容测试环境（mock 的 toast 没有 loading），动态访问以避免抛错。
+        const loading = (toast as unknown as { loading?: (msg: string) => string | number }).loading
+        if (typeof loading === 'function') {
+          loadingToastId = loading(opts?.loadingMessage ?? `${actionName}中…`)
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    try {
+      return await task()
+    } finally {
+      if (loadingToastId != null) {
+        try {
+          const dismiss = (toast as unknown as { dismiss?: (id?: string | number) => void }).dismiss
+          if (typeof dismiss === 'function') dismiss(loadingToastId)
+        } catch {
+          // ignore
+        }
+      }
+      this.actionBusy = false
+      this.busyActionName = null
+      this.emit()
+    }
+  }
+
   constructor(options: NormalizedDocumentBaseOptions<TDocument, TDetail>) {
     this.options = options
   }

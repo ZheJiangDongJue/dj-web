@@ -74,6 +74,24 @@ describe('DefectiveReworkOrderMapper', () => {
     expect(entity?.details[1].defectDescriptionText).toBe('')
   })
 
+  it('toDomain: ERP 状态位对齐（Status=1 仅表示已审批，不应被识别为锁定）', async () => {
+    const { DefectiveReworkOrderMapper } = await import('./defectiveReworkOrderMapper')
+
+    const entity = DefectiveReworkOrderMapper.toDomain({
+      document: { id: 1001, Status: 1, Employeeid: 11, TypeofWorkid: 22 },
+      details: [],
+      fallbackId: 0,
+    })
+
+    expect(entity).not.toBeNull()
+    expect(entity?.status.value).toBe(1)
+    expect(entity?.status.isApproved()).toBe(true)
+    expect(entity?.status.isFrozen()).toBe(false)
+    expect(entity?.status.isClosed()).toBe(false)
+    expect(entity?.status.isVoided()).toBe(false)
+    expect(entity?.status.isLocked()).toBe(false)
+  })
+
   it('toDomain: 单据头与明细同时为空时返回 null', async () => {
     const { DefectiveReworkOrderMapper } = await import('./defectiveReworkOrderMapper')
 

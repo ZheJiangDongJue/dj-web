@@ -350,15 +350,21 @@ export class FqcViewModel extends QualityDocumentBase<FinalInspectionDocument, F
   /**
    *
    * 审批按钮是否禁用。
+   * - 由状态锁（已审批/冻结/作废 等）或正在执行的 busy 操作决定。
    *
    */
-  public get disableApprove(): boolean { return this.statusLocks.approveDisabled }
+  public get disableApprove(): boolean {
+    return this.statusLocks.approveDisabled || this.actionBusy
+  }
   /**
    *
    * 反审批按钮是否禁用。
+   * - 由状态锁（未审批/冻结/作废 等）或正在执行的 busy 操作决定。
    *
    */
-  public get disableUnapprove(): boolean { return this.statusLocks.unapproveDisabled }
+  public get disableUnapprove(): boolean {
+    return this.statusLocks.unapproveDisabled || this.actionBusy
+  }
   /**
    *
    * 明细编辑是否禁用。
@@ -625,12 +631,14 @@ export class FqcViewModel extends QualityDocumentBase<FinalInspectionDocument, F
 
   /**
    *
-   * 刷新当前单据。
+   * 刷新当前单据（统一走 busy 包装，UI 获得加载反馈）。
    *
    */
   public handleRefresh = async (): Promise<void> => {
-    const id = this.getCurrentBillId()
-    await this.refresh(id ?? undefined)
+    await this.runBusyAction('刷新', async () => {
+      const id = this.getCurrentBillId()
+      await this.refresh(id ?? undefined)
+    }, { loadingMessage: '刷新中…' })
   }
 
   /**
@@ -668,14 +676,51 @@ export class FqcViewModel extends QualityDocumentBase<FinalInspectionDocument, F
 
   /**
    *
-   * 审批。
+   * 审批（通过 runBusyAction 包装，提供"审批中…"加载反馈与防重入）。
    *
    */
   public override async handleApprove(): Promise<boolean> {
-    const ok = await super.handleApprove()
-    if (!ok) return false
-    await this.handleAfterApprove(this.getCurrentBillId() ?? 0)
-    return true
+    const result = await this.runBusyAction(
+      '审批',
+      async () => {
+        const ok = await super.handleApprove()
+        if (!ok) return false
+        await this.handleAfterApprove(this.getCurrentBillId() ?? 0)
+        return true
+      },
+      { loadingMessage: '审批中…' },
+    )
+    return result ?? false
+  }
+
+  /**
+   *
+   * 反审批（通过 runBusyAction 包装，提供"反审批中…"加载反馈与防重入）。
+   *
+   */
+  public override async handleUnapprove(): Promise<boolean> {
+    const result = await this.runBusyAction(
+      '反审批',
+      () => super.handleUnapprove(),
+      { loadingMessage: '反审批中…' },
+    )
+    return result ?? false
+  }
+
+  /**
+   *
+   * 删除（通过 runBusyAction 包装；"取消新建"为同步操作，不会显示 loading toast）。
+   *
+   */
+  public override async handleDelete(): Promise<boolean> {
+    const currentId = this.getCurrentBillId()
+    const showLoading = currentId > 0
+    const result = await this.runBusyAction(
+      '删除',
+      () => super.handleDelete(),
+      { loadingMessage: '删除中…', showLoadingToast: showLoading },
+    )
+    return result ?? false
   }
 
   /**

@@ -4,14 +4,38 @@ import type React from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import Combobox, { type ComboboxOption } from "./combobox"
 
+const popoverOpenAutoFocusPreventDefaultCalls: Array<ReturnType<typeof vi.fn>> =
+  []
+
 vi.mock("@/components/ui/popover", () => ({
   Popover: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   PopoverTrigger: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-  PopoverContent: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  PopoverContent: ({
+    children,
+    onOpenAutoFocus,
+    className,
+  }: {
+    children: React.ReactNode
+    onOpenAutoFocus?: (event: { preventDefault: () => void }) => void
+    className?: string
+  }) => {
+    if (typeof onOpenAutoFocus === "function") {
+      const preventDefault = vi.fn()
+      onOpenAutoFocus({ preventDefault })
+      popoverOpenAutoFocusPreventDefaultCalls.push(preventDefault)
+    }
+    return (
+      <div data-testid="mock-popover-content" className={className}>
+        {children}
+      </div>
+    )
+  },
 }))
 
 afterEach(() => {
   cleanup()
+  popoverOpenAutoFocusPreventDefaultCalls.length = 0
+  vi.unstubAllGlobals()
 })
 
 class ResizeObserverStub {
@@ -103,5 +127,74 @@ describe("Combobox", () => {
     })
 
     expect(queryByText("员工120")).not.toBeNull()
+  })
+
+  it("弹层内容包含可视区高度约束类，避免移动端键盘弹出时越界", () => {
+    const options = createEmployeeOptions(5)
+    const { container, getByTestId } = render(
+      <Combobox open options={options} value="" />
+    )
+    const popover = getByTestId("mock-popover-content")
+    const cls = popover.getAttribute("class") ?? ""
+    expect(cls).toContain("max-h-[min(var(--radix-popover-content-available-height),20rem)]")
+    expect(cls).toContain("overflow-hidden")
+
+    const commandList = container.querySelector("[data-slot='command-list']")
+    expect(commandList).not.toBeNull()
+    const commandListClass = commandList?.getAttribute("class") ?? ""
+    expect(commandListClass).toContain(
+      "max-h-[calc(min(var(--radix-popover-content-available-height),20rem)-2.25rem)]"
+    )
+    expect(commandListClass).toContain("overscroll-contain")
+  })
+
+  it("打开弹层时阻止默认自动聚焦，避免直接唤起移动端输入法", () => {
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn().mockImplementation((query: string) => ({
+        matches: query === "(pointer: coarse)",
+        media: query,
+        onchange: null,
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      }))
+    )
+
+    const options = createEmployeeOptions(5)
+    render(<Combobox open options={options} value="" />)
+    expect(popoverOpenAutoFocusPreventDefaultCalls.length).toBeGreaterThan(0)
+    const lastCall =
+      popoverOpenAutoFocusPreventDefaultCalls[
+        popoverOpenAutoFocusPreventDefaultCalls.length - 1
+    ]
+    expect(lastCall).toHaveBeenCalledTimes(1)
+  })
+
+  it("桌面端不阻止默认自动聚焦，保留键盘搜索体验", () => {
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn().mockImplementation((query: string) => ({
+        matches: false,
+        media: query,
+        onchange: null,
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      }))
+    )
+
+    const options = createEmployeeOptions(5)
+    render(<Combobox open options={options} value="" />)
+    expect(popoverOpenAutoFocusPreventDefaultCalls.length).toBeGreaterThan(0)
+    const lastCall =
+      popoverOpenAutoFocusPreventDefaultCalls[
+        popoverOpenAutoFocusPreventDefaultCalls.length - 1
+      ]
+    expect(lastCall).toHaveBeenCalledTimes(0)
   })
 })

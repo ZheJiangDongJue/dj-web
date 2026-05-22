@@ -228,11 +228,10 @@ export class NcrViewModel extends QualityDocumentBase<DefectiveReworkOrderDocume
 
   /**
    *
-   * 操作进行中标记。
-   * @remarks 用于跨 save/approve 两段过程禁用按钮，避免重复提交。
+   * 操作进行中标记由 DocumentBase 提供（this.actionBusy / this.busyActionName），
+   * 通过 runBusyAction 在远程操作期间统一维护，避免在各子类重复实现门闩。
    *
    */
-  private actionBusy = false
 
   /**
    *
@@ -912,23 +911,33 @@ export class NcrViewModel extends QualityDocumentBase<DefectiveReworkOrderDocume
 
   /**
    *
-   * 刷新：若存在当前 ID，则重新读取表头+明细，并同步加载附件。
+   * 刷新：若存在当前 ID，则重新读取表头+明细，并同步加载附件（通过 runBusyAction 提供加载反馈）。
    *
    */
   public async handleRefresh(): Promise<void> {
     const id = toNumericId((this as any).currentId)
     if (!id) return
-    await this.refresh(id)
-    await this.loadServerPhotoEvidence(id)
-    await this.loadProcessOptions()
+    await this.runBusyAction('刷新', async () => {
+      await this.refresh(id)
+      await this.loadServerPhotoEvidence(id)
+      await this.loadProcessOptions()
+    }, { loadingMessage: '刷新中…' })
   }
 
   /**
    *
-   * 删除当前单据（对外别名）。
+   * 删除当前单据（对外别名；通过 runBusyAction 提供加载反馈，新建草稿场景不显示 toast）。
    *
    */
-  public async handleDeleteBill(): Promise<void> { await this.handleDelete() }
+  public async handleDeleteBill(): Promise<void> {
+    const currentId = this.getCurrentBillId()
+    const showLoading = currentId > 0
+    await this.runBusyAction(
+      '删除',
+      () => this.handleDelete(),
+      { loadingMessage: '删除中…', showLoadingToast: showLoading },
+    )
+  }
 
   /**
    *
@@ -1455,36 +1464,30 @@ export class NcrViewModel extends QualityDocumentBase<DefectiveReworkOrderDocume
 
   /**
    *
-   * 审批当前单据（在基类流程之上增加 actionBusy 防重入门闩）。
+   * 审批当前单据（通过 runBusyAction 包装，提供"审批中…"加载反馈与防重入）。
    *
    */
   public override async handleApprove(): Promise<boolean> {
-    if (this.actionBusy) return false
-    this.actionBusy = true
-    this.emit()
-    try {
-      return await super.handleApprove()
-    } finally {
-      this.actionBusy = false
-      this.emit()
-    }
+    const result = await this.runBusyAction(
+      '审批',
+      () => super.handleApprove(),
+      { loadingMessage: '审批中…' },
+    )
+    return result ?? false
   }
 
   /**
    *
-   * 反审批当前单据（在基类流程之上增加 actionBusy 防重入门闩）。
+   * 反审批当前单据（通过 runBusyAction 包装，提供"反审批中…"加载反馈与防重入）。
    *
    */
   public override async handleUnapprove(): Promise<boolean> {
-    if (this.actionBusy) return false
-    this.actionBusy = true
-    this.emit()
-    try {
-      return await super.handleUnapprove()
-    } finally {
-      this.actionBusy = false
-      this.emit()
-    }
+    const result = await this.runBusyAction(
+      '反审批',
+      () => super.handleUnapprove(),
+      { loadingMessage: '反审批中…' },
+    )
+    return result ?? false
   }
 }
 

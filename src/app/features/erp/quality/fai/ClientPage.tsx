@@ -11,6 +11,7 @@ import DocumentPageLayout from '@/app/features/common/documents/DocumentPageLayo
 import { DetailsCardList } from '@/components/molecules/DetailsCardList'
 import { CloseIconButton } from '@/components/ui/close-icon-button'
 import ApproveFooterBar from '@/app/features/common/documents/ApproveFooterBar'
+import DocumentHeaderActions from '@/app/features/common/documents/DocumentHeaderActions'
 import DebugFab from '@/components/molecules/DebugFab'
 import { focusComboboxByAriaLabel } from '@/lib/dom/focusCombobox'
 import { useFaiViewModelClass as useFaiVM } from './viewmodels/FaiViewModelClass'
@@ -219,10 +220,13 @@ function FaiBody({ rowGap, initialScanCode }: { rowGap: number; initialScanCode?
         header={(
           <>
             <div className="mt-2">
-              <HeaderActions
+              <DocumentHeaderActions
                 onCreate={() => vm.createNewBill()}
                 onDelete={() => void vm.handleDelete()}
                 onRefresh={() => void vm.handleRefresh()}
+                deleteBusy={vm.busyActionName === '删除'}
+                refreshBusy={vm.busyActionName === '刷新'}
+                globalBusy={vm.actionBusy && vm.busyActionName !== '删除' && vm.busyActionName !== '刷新'}
               />
             </div>
             <QualityPageWarmupStrip state={warmupState} className="mt-2" />
@@ -264,6 +268,9 @@ function FaiBody({ rowGap, initialScanCode }: { rowGap: number; initialScanCode?
               onUnapprove={() => void vm.handleUnapprove()}
               approveDisabled={isPagePreparing || vm.disableApprove}
               unapproveDisabled={isPagePreparing || vm.disableUnapprove}
+              approveBusy={vm.busyActionName === '审批'}
+              unapproveBusy={vm.busyActionName === '反审批'}
+              globalBusy={vm.actionBusy && vm.busyActionName !== '审批' && vm.busyActionName !== '反审批'}
             />
           </>
         )}
@@ -651,53 +658,6 @@ function HeaderDocument({
           style={{ height: '26px', minHeight: '26px', paddingInline: '4px' }}
         />
       </div>
-    </div>
-  )
-}
-
-/**
- *
- * 操作按钮区（新增/删除/刷新）
- *
- */
-function HeaderActions({
-  onCreate,
-  onDelete,
-  onRefresh,
-}: {
-  onCreate: () => void | Promise<void>
-  onDelete: () => void | Promise<void>
-  onRefresh: () => void | Promise<void>
-}) {
-  return (
-    <div
-      className="grid grid-cols-3 gap-0 w-full border border-[#797979]"
-      style={{ height: '24px', minHeight: '24px' }}
-    >
-      <button
-        type="button"
-        aria-label="新增"
-        className="w-full h-full leading-[24px] px-0 py-0 text-[12px] rounded-none bg-[#0079FE] text-white"
-        onClick={() => void onCreate()}
-      >
-        新增
-      </button>
-      <button
-        type="button"
-        aria-label="删除"
-        className="w-full h-full leading-[24px] px-0 py-0 text-[12px] rounded-none border-l border-[#797979]"
-        onClick={() => void onDelete()}
-      >
-        删除
-      </button>
-      <button
-        type="button"
-        aria-label="刷新"
-        className="w-full h-full leading-[24px] px-0 py-0 text-[12px] rounded-none border-l border-[#797979]"
-        onClick={() => void onRefresh()}
-      >
-        刷新
-      </button>
     </div>
   )
 }
