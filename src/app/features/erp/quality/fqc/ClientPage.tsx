@@ -515,35 +515,27 @@ function HeaderDocument({
 
   return (
     <div className="w-full">
-      {/* 第一行：单据编号 物料编码 状态 */}
-      <div className="grid grid-cols-[auto_minmax(0,1fr)_auto_minmax(0,1fr)_auto] items-center gap-x-0.5 sm:grid-cols-[56px_128px_53px_65px_64px] sm:gap-x-[2px]">
+      {/* 第一行：单据编号 审批状态 */}
+      <div className="grid grid-cols-[56px_1fr_64px] items-center gap-x-[0.5px]">
         <GridLabel text="单据编号" className="sm:w-[56px]" />
         <GridInput
           value={(bill as any).Code ?? ''}
           disabled
-          className="sm:w-[128px]"
+          className="w-full"
           ariaLabel="单据编号"
           style={{ height: '25px', minHeight: '25px', paddingInline: '4px' }}
         />
-        <GridLabel text="物料编码" className="sm:w-[53px]" />
-        <GridInput
-          value={materialCode ?? ''}
-          disabled
-          className="sm:w-[65px]"
-          ariaLabel="物料编码"
-          style={{ height: '25px', minHeight: '25px', paddingInline: '4px' }}
-        />
         <span
-          className={`sm:w-[64px] text-center whitespace-nowrap ${getStatusTextClass(status)}`}
-          aria-label="单据状态"
+          className={`w-[64px] text-center whitespace-nowrap ${getStatusTextClass(status)}`}
+          aria-label="审批状态"
         >
           {documentStatusToText(status)}
         </span>
       </div>
 
-      {/* 第二行：制令单号 当前检验工序 */}
+      {/* 第二行：制令单号 物料编码 */}
       <div
-        className="grid grid-cols-[auto_minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-x-0.5 sm:grid-cols-[55px_103px_78px_127px] sm:gap-x-[2px]"
+        className="grid grid-cols-[auto_minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-x-0.5 sm:grid-cols-[55px_103px_78px_127px] sm:gap-x-[0.5px]"
         style={{ marginTop: rowGap }}
       >
         <GridLabel text="制令单号" className="sm:w-[55px]" />
@@ -554,25 +546,19 @@ function HeaderDocument({
           ariaLabel="制令单号"
           style={{ height: '25px', minHeight: '25px', paddingInline: '4px' }}
         />
-        <GridLabel text="当前检验工序" className="sm:w-[78px]" />
-        <GridSelect
-          value={(bill as any)?.TypeofWorkid > 0 ? String((bill as any).TypeofWorkid) : ''}
+        <GridLabel text="物料编码" className="sm:w-[53px]" />
+        <GridInput
+          value={materialCode ?? ''}
           disabled
           className="sm:w-[127px]"
-          ariaLabel="当前检验工序"
-          options={
-            (processOptions && processOptions.length > 0)
-              ? processOptions
-              : [ { label: processName || '—', value: (bill as any)?.TypeofWorkid > 0 ? String((bill as any).TypeofWorkid) : '' } ]
-          }
+          ariaLabel="物料编码"
           style={{ height: '25px', minHeight: '25px', paddingInline: '4px' }}
-          onChange={(v) => actions.setBill('TypeofWorkid', v === '' ? 0 : Number(v))}
         />
       </div>
 
-      {/* 第三行：送检数 检验员 判定 */}
+      {/* 第三行：送检数 当前检验工序 */}
       <div
-        className="grid grid-cols-[auto_minmax(0,1fr)_auto_minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-x-0.5 gap-y-1 sm:grid-cols-[40px_46px_40px_73px_29px_93px] sm:gap-x-[2px] sm:gap-y-0"
+        className="grid grid-cols-[auto_46px_auto_minmax(0,1fr)] items-center gap-x-[0.5px]"
         style={{ marginTop: rowGap }}
       >
         <GridLabel text="送检数" className="sm:w-[40px] text-center" />
@@ -582,6 +568,37 @@ function HeaderDocument({
           className="sm:w-[46px]"
           ariaLabel="送检数"
           style={{ height: '25px', minHeight: '25px', paddingInline: '4px' }}
+        />
+        <GridLabel text="当前检验工序" className="sm:w-[78px]" />
+        <GridSelect
+          value={(bill as any)?.TypeofWorkid > 0 ? String((bill as any).TypeofWorkid) : ''}
+          disabled
+          className="w-full"
+          ariaLabel="当前检验工序"
+          options={
+            (processOptions && processOptions.length > 0)
+              ? processOptions
+              : [{ label: processName || '—', value: (bill as any)?.TypeofWorkid > 0 ? String((bill as any).TypeofWorkid) : '' }]
+          }
+          style={{ height: '25px', minHeight: '25px', paddingInline: '4px' }}
+          onChange={(v) => actions.setBill('TypeofWorkid', v === '' ? 0 : Number(v))}
+        />
+      </div>
+
+      {/* 第四行：检验数 检验员 判定 */}
+      <div
+        className="grid grid-cols-[auto_46px_auto_73px_auto_93px] items-center gap-x-[0.5px]"
+        style={{ marginTop: rowGap }}
+      >
+        <GridLabel text="检验数" className="sm:w-[40px] t-text-error" />
+        <NumberInput
+          value={toNumOrEmpty(bill.ChkBQty)}
+          onValueChange={onChangeInspect}
+          onValueChangeThrottleMs={50}
+          onChange={onChangeInspect}
+          className="sm:w-[46px]"
+          ariaLabel="检验数"
+          style={{ height: '26px', minHeight: '26px', paddingInline: '4px' }}
         />
 
         <GridLabel text="检验员" className="sm:w-[40px] text-right t-text-error" />
@@ -609,22 +626,11 @@ function HeaderDocument({
         />
       </div>
 
-      {/* 第四行：检验数 合格数 让步数 不合格数 */}
+      {/* 第五行：合格数 不合格数 让步数 */}
       <div
-        className="grid grid-cols-[auto_minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-x-0.5 gap-y-1 sm:grid-cols-[40px_46px_40px_46px_41px_46px_52px_46px] sm:gap-x-[2px] sm:gap-y-0"
+        className="grid grid-cols-[auto_minmax(0,1fr)_auto_minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-x-[0.5px]"
         style={{ marginTop: rowGap }}
       >
-        <GridLabel text="检验数" className="sm:w-[40px] t-text-error" />
-        <NumberInput
-          value={toNumOrEmpty(bill.ChkBQty)}
-          onValueChange={onChangeInspect}
-          onValueChangeThrottleMs={50}
-          onChange={onChangeInspect}
-          className="sm:w-[46px]"
-          ariaLabel="检验数"
-          style={{ height: '26px', minHeight: '26px', paddingInline: '4px' }}
-        />
-
         <GridLabel text="合格数" className="sm:w-[40px]" />
         <NumberInput
           value={toNumOrEmpty(bill.PassBQty)}
@@ -636,17 +642,6 @@ function HeaderDocument({
           style={{ height: '26px', minHeight: '26px', paddingInline: '4px' }}
         />
 
-        <GridLabel text="让步数" className="sm:w-[41px]" />
-        <NumberInput
-          value={toNumOrEmpty(bill.RQty)}
-          onValueChange={onChangeAllow}
-          onValueChangeThrottleMs={50}
-          onChange={onChangeAllow}
-          className="sm:w-[46px]"
-          ariaLabel="让步数"
-          style={{ height: '26px', minHeight: '26px', paddingInline: '4px' }}
-        />
-
         <GridLabel text="不合格数" className="sm:w-[52px]" />
         <NumberInput
           value={toNumOrEmpty(bill.NotPassBQty)}
@@ -655,6 +650,17 @@ function HeaderDocument({
           onChange={onChangeNg}
           className="sm:w-[46px] text-right"
           ariaLabel="不合格数"
+          style={{ height: '26px', minHeight: '26px', paddingInline: '4px' }}
+        />
+
+        <GridLabel text="让步数" className="sm:w-[41px]" />
+        <NumberInput
+          value={toNumOrEmpty(bill.RQty)}
+          onValueChange={onChangeAllow}
+          onValueChangeThrottleMs={50}
+          onChange={onChangeAllow}
+          className="sm:w-[46px]"
+          ariaLabel="让步数"
           style={{ height: '26px', minHeight: '26px', paddingInline: '4px' }}
         />
       </div>
