@@ -846,7 +846,7 @@ function HeaderSection({
   return (
     <div className="w-full space-y-1.5">
       {/* 第一行：单据编号、物料编码、状态（状态此处仅示例文本，可扩展为主题色） */}
-      <div className="grid grid-cols-[60px_1fr_60px_1fr_60px] items-center gap-x-2">
+      <div className="grid grid-cols-[auto_1fr_auto_1fr_auto] items-center gap-x-0.5">
         <Label className="text-[13px]">单据编号</Label>
         <Input
           value={view.Code ?? ''}
@@ -878,7 +878,7 @@ function HeaderSection({
       </div>
 
       {/* 第二行：制令单号、工种 */}
-      <div className="grid grid-cols-[60px_1fr_48px_1fr] items-center gap-x-2">
+      <div className="grid grid-cols-[auto_1fr_auto_1fr] items-center gap-x-0.5">
         <Label className="text-[13px]">制令单号</Label>
         <Input
           value={orderNoText}
@@ -904,7 +904,7 @@ function HeaderSection({
       </div>
 
       {/* 第三行：送检数、检验员、判定 */}
-      <div className="grid grid-cols-[48px_72px_48px_1fr_36px_1fr] items-center gap-x-2">
+      <div className="grid grid-cols-[auto_1fr_auto_1fr_auto_1fr] items-center gap-x-0.5">
         <Label className="text-center text-[13px]">送检数</Label>
         <Input
           value={String(view.PreCmpBQty ?? 0)}
@@ -943,7 +943,7 @@ function HeaderSection({
       </div>
 
       {/* 第四行：返工工序、返工工序2 */}      
-      <div className="grid grid-cols-[72px_1fr_84px_1fr] items-center gap-x-2">
+      <div className="grid grid-cols-[auto_1fr_auto_1fr] items-center gap-x-0.5">
         <Label className="text-[13px]">返工工序</Label>
         <GridSelect
           value={view.ReworkTypeofWorkid != null ? String(view.ReworkTypeofWorkid) : ''}
@@ -965,7 +965,7 @@ function HeaderSection({
       </div>
 
       {/* 第五行：来源阶段、不合格数 */}
-      <div className="grid grid-cols-[72px_1fr_72px_1fr] items-center gap-x-2">
+      <div className="grid grid-cols-[auto_1fr_auto_1fr] items-center gap-x-0.5">
         <Label className="text-[13px]">来源阶段</Label>
         <GridSelect
           value={sourceStageValue}

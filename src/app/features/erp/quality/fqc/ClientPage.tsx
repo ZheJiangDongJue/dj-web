@@ -516,7 +516,7 @@ function HeaderDocument({
   return (
     <div className="w-full">
       {/* 第一行：单据编号 物料编码 状态 */}
-      <div className="grid grid-cols-[auto_minmax(0,1fr)_auto_minmax(0,1fr)_auto] items-center gap-x-2 sm:grid-cols-[56px_128px_53px_65px_64px] sm:gap-x-[2px]">
+      <div className="grid grid-cols-[auto_minmax(0,1fr)_auto_minmax(0,1fr)_auto] items-center gap-x-0.5 sm:grid-cols-[56px_128px_53px_65px_64px] sm:gap-x-[2px]">
         <GridLabel text="单据编号" className="sm:w-[56px]" />
         <GridInput
           value={(bill as any).Code ?? ''}
@@ -543,7 +543,7 @@ function HeaderDocument({
 
       {/* 第二行：制令单号 当前检验工序 */}
       <div
-        className="grid grid-cols-[auto_minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-x-2 sm:grid-cols-[55px_103px_78px_127px] sm:gap-x-[2px]"
+        className="grid grid-cols-[auto_minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-x-0.5 sm:grid-cols-[55px_103px_78px_127px] sm:gap-x-[2px]"
         style={{ marginTop: rowGap }}
       >
         <GridLabel text="制令单号" className="sm:w-[55px]" />
@@ -572,7 +572,7 @@ function HeaderDocument({
 
       {/* 第三行：送检数 检验员 判定 */}
       <div
-        className="grid grid-cols-[auto_minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-x-2 gap-y-1 sm:grid-cols-[40px_46px_40px_73px_29px_93px] sm:gap-x-[2px] sm:gap-y-0"
+        className="grid grid-cols-[auto_minmax(0,1fr)_auto_minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-x-0.5 gap-y-1 sm:grid-cols-[40px_46px_40px_73px_29px_93px] sm:gap-x-[2px] sm:gap-y-0"
         style={{ marginTop: rowGap }}
       >
         <GridLabel text="送检数" className="sm:w-[40px] text-center" />
@@ -611,7 +611,7 @@ function HeaderDocument({
 
       {/* 第四行：检验数 合格数 让步数 不合格数 */}
       <div
-        className="grid grid-cols-[auto_minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-x-2 gap-y-1 sm:grid-cols-[40px_46px_40px_46px_41px_46px_52px_46px] sm:gap-x-[2px] sm:gap-y-0"
+        className="grid grid-cols-[auto_minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-x-0.5 gap-y-1 sm:grid-cols-[40px_46px_40px_46px_41px_46px_52px_46px] sm:gap-x-[2px] sm:gap-y-0"
         style={{ marginTop: rowGap }}
       >
         <GridLabel text="检验数" className="sm:w-[40px] t-text-error" />
