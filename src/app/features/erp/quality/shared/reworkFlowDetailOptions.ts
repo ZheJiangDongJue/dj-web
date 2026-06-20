@@ -5,7 +5,12 @@ import { fetchLookup } from '@/lib/erp/lookup-core'
  * 下拉选项的标准结构（用于 GridSelect/Combobox）。
  *
  */
-export type SelectOption = { label: string; value: string }
+export type SelectOption = {
+  label: string
+  value: string
+  /** 流程卡明细表名，仅返工工序候选需要，用于来源阶段随工序切换。 */
+  flowDetailTableName?: ReworkFlowDetailTableName
+}
 
 /**
  *
@@ -209,7 +214,10 @@ export async function resolveUpstreamFlowDetailIdFromDocumentBase(
   return null
 }
 
-async function fetchFlowDetailRowById(flowDetailId: number, fetcher: FetchLookupFn): Promise<any | null> {
+async function fetchFlowDetailRowById(
+  flowDetailId: number,
+  fetcher: FetchLookupFn,
+): Promise<{ row: any; flowDetailTableName: ReworkFlowDetailTableName } | null> {
   if (flowDetailId <= 0) return null
 
   try {
@@ -220,7 +228,7 @@ async function fetchFlowDetailRowById(flowDetailId: number, fetcher: FetchLookup
       { where: { DeletedTag: 0, id: flowDetailId }, take: 1 },
     )
     const assembly = Array.isArray(assemblyRows) && assemblyRows.length > 0 ? (assemblyRows[0] as any) : null
-    if (assembly) return assembly
+    if (assembly) return { row: assembly, flowDetailTableName: TABLE.assemblyDetail }
   } catch { }
 
   try {
@@ -231,13 +239,17 @@ async function fetchFlowDetailRowById(flowDetailId: number, fetcher: FetchLookup
       { where: { DeletedTag: 0, id: flowDetailId }, take: 1 },
     )
     const produce = Array.isArray(produceRows) && produceRows.length > 0 ? (produceRows[0] as any) : null
-    if (produce) return produce
+    if (produce) return { row: produce, flowDetailTableName: TABLE.produceDetail }
   } catch { }
 
   return null
 }
 
-function toReworkOption(row: any, workTypeOptions: SelectOption[]): SelectOption | null {
+function toReworkOption(
+  row: any,
+  workTypeOptions: SelectOption[],
+  flowDetailTableName: ReworkFlowDetailTableName,
+): SelectOption | null {
   const id = normalizePositiveInt(row?.id ?? row?.Id ?? row?.ID)
   if (!id) return null
 
@@ -245,7 +257,7 @@ function toReworkOption(row: any, workTypeOptions: SelectOption[]): SelectOption
 
   const nameFromWorkType = resolveWorkTypeNameFromOptions(workTypeOptions, typeofWorkId)
   const name = nameFromWorkType || (typeofWorkId ? `工序ID=${typeofWorkId}` : '未设置工序')
-  return { label: name, value: String(id) }
+  return { label: name, value: String(id), flowDetailTableName }
 }
 
 /**
@@ -277,7 +289,9 @@ export async function fetchReworkFlowDetailOptionsFromUpstreamFlowCard(
       'LocationIndex asc, id asc',
       { where: { DeletedTag: 0, ParentTypeid: resolved.flowDocumentId } },
     )
-    const mapped = (Array.isArray(rows) ? rows : []).map((r) => toReworkOption(r, input.workTypeOptions)).filter(Boolean) as SelectOption[]
+    const mapped = (Array.isArray(rows) ? rows : [])
+      .map((r) => toReworkOption(r, input.workTypeOptions, resolved.flowDetailTableName))
+      .filter(Boolean) as SelectOption[]
     options = mapped
   }
 
@@ -289,8 +303,8 @@ export async function fetchReworkFlowDetailOptionsFromUpstreamFlowCard(
     const key = String(id)
     if (existing.has(key)) continue
 
-    const row = await fetchFlowDetailRowById(id, fetcher)
-    const opt = row ? toReworkOption(row, input.workTypeOptions) : null
+    const hit = await fetchFlowDetailRowById(id, fetcher)
+    const opt = hit ? toReworkOption(hit.row, input.workTypeOptions, hit.flowDetailTableName) : null
     if (!opt) continue
     options = [opt, ...options]
     existing.add(key)

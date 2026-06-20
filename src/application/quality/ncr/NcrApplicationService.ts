@@ -11,18 +11,19 @@ import { BillApprovalService } from '@/application/quality/shared/BillApprovalSe
 import {
   ScanDocumentFlow,
   type ScanDocumentFlowResult,
-  type ScanSourceConfig,
 } from '@/application/quality/shared/ScanDocumentFlow'
 import { normalizePositiveInt, resolveUserFacingErrorMessage } from '@/application/quality/shared/billCommon'
 import {
   DefectiveReworkOrderDetail,
   DefectiveReworkOrderDocument,
+  DefectiveReworkOrderCheckDetail,
   FileRecordForNcr,
 } from '@/types/erp-db.generated'
 import type { DefectiveReworkOrderRepository } from '@/domain/quality/ncr/repositories/DefectiveReworkOrderRepository'
 import { NcrScanService } from '@/domain/quality/ncr/services/NcrScanService'
 import { DefectiveReworkOrderApprovalService } from '@/domain/quality/ncr/services/DefectiveReworkOrderApprovalService'
 import { DefectiveReworkOrderMapper } from '@/infrastructure/repositories/quality/mappers/defectiveReworkOrderMapper'
+import { pickDocumentAndDetails, pickField, unwrapDataContainer } from '@/application/quality/shared/apiMessagePack'
 
 /**
  *
@@ -83,6 +84,11 @@ export type NcrDraftFromInspectionResult =
       readonly ok: true
       readonly document: DefectiveReworkOrderDocument
       readonly details: DefectiveReworkOrderDetail[]
+      readonly checkDetails: DefectiveReworkOrderCheckDetail[]
+      readonly sourceStage?: number
+      readonly availableSourceStages?: number[]
+      readonly sourceFlowDetailId?: number
+      readonly sourceFlowDetailType?: string
     }
   | {
       readonly ok: false
@@ -183,16 +189,52 @@ export type NcrScanExecuteResult =
   | {
       /**
        *
-       * 结果类型：生成并打开新单据。
+       * 结果类型：已生成 NCR 草稿（不落库）。
        *
        */
-      readonly type: 'CREATED_BY_DAILY_PLAN'
+      readonly type: 'DRAFT_LOADED'
       /**
        *
-       * 新生成的单据主键。
+       * NCR 草稿单据头。
        *
        */
-      readonly id: number
+      readonly document: DefectiveReworkOrderDocument
+      /**
+       *
+       * NCR 返工明细草稿。
+       *
+       */
+      readonly details: DefectiveReworkOrderDetail[]
+      /**
+       *
+       * 来源检验明细草稿（当前页面未完整渲染，但保留给后续保存/展示扩展）。
+       *
+       */
+      readonly checkDetails: DefectiveReworkOrderCheckDetail[]
+      /**
+       *
+       * 当前来源阶段（接收/首件/完工/末件）。
+       *
+       */
+      readonly sourceStage?: number
+      /**
+       *
+       * 当前来源流程卡明细可选阶段列表。
+       *
+       */
+      readonly availableSourceStages?: number[]
+      /**
+       *
+       * 当前草稿所选来源流程卡明细主键。
+       *
+       */
+      readonly sourceFlowDetailId?: number
+      /**
+       *
+       * 当前草稿所选来源流程卡明细表名。
+       *
+       */
+      readonly sourceFlowDetailType?: string
       /**
        *
        * 后端返回的提示信息（可选）。
@@ -310,7 +352,7 @@ export type NcrScanFlowDetailCandidate = FlowDetailCandidate
     return new ScanDocumentFlow<
       DefectiveReworkOrderDocument,
       DefectiveReworkOrderDetail,
-      { readonly inspectorEmployeeId: number }
+      { readonly inspectorEmployeeId: number; readonly sourceStage?: number | null }
     >({
       documentKind: FlowScanDocumentKind.Ncr,
       targetDocumentTableName: NCR_TABLE_NAME,
@@ -318,36 +360,31 @@ export type NcrScanFlowDetailCandidate = FlowDetailCandidate
       createDraft: async ({ user, flowDetailTableName, flowDetailId, scanCode, context }) => {
         const inspectorEmployeeid = context?.inspectorEmployeeId ?? 0
         if (mode === 'daily') {
-          return QualityApi.CreateDefectiveReworkOrderByDailyPlanScanCode({
+          return QualityApi.GetDefectiveReworkOrderDraftByDailyPlanScanCode({
             dbName: DEFAULT_DB_NAME,
             user,
             scanForCode: scanCode,
             inspectorEmployeeid,
             flowDetailTableName,
             flowDetailId,
+            sourceStage: context?.sourceStage ?? null,
           }) as any
         }
-        return QualityApi.CreateDefectiveReworkOrderByFlowDetail({
+        return QualityApi.GetDefectiveReworkOrderDraftByFlowDetail({
           dbName: DEFAULT_DB_NAME,
           user,
           inspectorEmployeeid,
           flowDetailTableName,
           flowDetailId,
+          sourceStage: context?.sourceStage ?? null,
         }) as any
       },
-      draftStrategy: {
-        mode: 'created-id',
-        pickId: (pack) => {
-          const d = (pack as any)?.data ?? (pack as any)?.Data ?? {}
-          const raw = d?.id ?? d?.Id ?? d?.Document?.id ?? d?.Document?.Id
-          return Number(raw) || 0
-        },
-      },
+      draftStrategy: { mode: 'document-and-details' },
       messages: {
         queryFailed: '查询流程卡工序明细失败',
         noFlowDetail: '未找到当前可用的流程卡工序明细',
         createFailed: '未能生成不合格返工单',
-        invalidCreatedId: '后端返回单据ID异常，无法打开',
+        invalidCreatedId: '后端返回草稿数据异常，无法打开',
         invalidFlowDetail: '工序明细参数不合法',
         scanFailed: '扫码处理失败，请稍后重试',
       },
@@ -427,7 +464,7 @@ export type NcrScanFlowDetailCandidate = FlowDetailCandidate
       const pack = await QualityApi.GetDefectiveReworkOrderDraftByInspection<
         DefectiveReworkOrderDocument,
         DefectiveReworkOrderDetail,
-        unknown
+        DefectiveReworkOrderCheckDetail
       >({
         dbName: DEFAULT_DB_NAME,
         user,
@@ -435,17 +472,24 @@ export type NcrScanFlowDetailCandidate = FlowDetailCandidate
         inspectionDocumentId: id,
       })
 
-      const ok = !!(pack as any)?.success
-      const msg = String((pack as any)?.message ?? '').trim()
-      if (!ok) return { ok: false, message: msg || '未能生成不合格返工单草稿' }
+      const draft = this.toNcrDraftLoadedResult(pack, '未能生成不合格返工单草稿')
+      if (draft.type !== 'DRAFT_LOADED') {
+        return {
+          ok: false,
+          message: draft.type === 'ERROR' ? draft.message : '未能生成不合格返工单草稿',
+        }
+      }
 
-      const data = ((pack as any)?.data ?? (pack as any)?.Data ?? null) as any
-      const document = (data?.Document ?? data?.document ?? null) as DefectiveReworkOrderDocument | null
-      const detailsRaw = (data?.Details ?? data?.details ?? []) as unknown
-      const details = Array.isArray(detailsRaw) ? (detailsRaw as DefectiveReworkOrderDetail[]) : []
-
-      if (!document) return { ok: false, message: '后端返回草稿数据异常（缺少 Document）' }
-      return { ok: true, document, details }
+      return {
+        ok: true,
+        document: draft.document,
+        details: draft.details,
+        checkDetails: draft.checkDetails,
+        sourceStage: draft.sourceStage,
+        availableSourceStages: draft.availableSourceStages,
+        sourceFlowDetailId: draft.sourceFlowDetailId,
+        sourceFlowDetailType: draft.sourceFlowDetailType,
+      }
     } catch (error) {
       console.error('[NCR] 生成不合格返工单草稿失败:', error)
       return { ok: false, message: '生成草稿失败，请稍后重试' }
@@ -725,9 +769,15 @@ export type NcrScanFlowDetailCandidate = FlowDetailCandidate
     scanForCode: string,
     options?: {
       readonly inspectorEmployeeId?: number | null
-      readonly pickedFlowDetail?: { tableName: string; id: number } | null
+      readonly pickedFlowDetail?: { tableName: string; id: number; sourceStage?: number | null } | null
     },
   ): Promise<NcrScanExecuteResult> {
+    if (!options?.pickedFlowDetail) {
+      return this.createDraftByDailyPlanDefaultOrder(scanForCode, {
+        inspectorEmployeeId: options?.inspectorEmployeeId ?? 0,
+      })
+    }
+
     return this.toNcrScanResult(
       await this.createScanFlow('daily').run({
         scanForCode,
@@ -736,7 +786,10 @@ export type NcrScanFlowDetailCandidate = FlowDetailCandidate
           logTag: '[NCR]',
         },
         pickedFlowDetail: options?.pickedFlowDetail ?? null,
-        context: { inspectorEmployeeId: options?.inspectorEmployeeId ?? 0 },
+        context: {
+          inspectorEmployeeId: options?.inspectorEmployeeId ?? 0,
+          sourceStage: options?.pickedFlowDetail?.sourceStage ?? null,
+        },
       }),
     )
   }
@@ -750,7 +803,7 @@ export type NcrScanFlowDetailCandidate = FlowDetailCandidate
     scanForCode: string,
     options?: {
       readonly inspectorEmployeeId?: number | null
-      readonly pickedFlowDetail?: { tableName: string; id: number } | null
+      readonly pickedFlowDetail?: { tableName: string; id: number; sourceStage?: number | null } | null
     },
   ): Promise<NcrScanExecuteResult> {
     return this.toNcrScanResult(
@@ -762,7 +815,10 @@ export type NcrScanFlowDetailCandidate = FlowDetailCandidate
           logTag: '[NCR]',
         },
         pickedFlowDetail: options?.pickedFlowDetail ?? null,
-        context: { inspectorEmployeeId: options?.inspectorEmployeeId ?? 0 },
+        context: {
+          inspectorEmployeeId: options?.inspectorEmployeeId ?? 0,
+          sourceStage: options?.pickedFlowDetail?.sourceStage ?? null,
+        },
       }),
     )
   }
@@ -776,7 +832,7 @@ export type NcrScanFlowDetailCandidate = FlowDetailCandidate
     scanForCode: string,
     options?: {
       readonly inspectorEmployeeId?: number | null
-      readonly pickedFlowDetail?: { tableName: string; id: number } | null
+      readonly pickedFlowDetail?: { tableName: string; id: number; sourceStage?: number | null } | null
     },
   ): Promise<NcrScanExecuteResult> {
     return this.toNcrScanResult(
@@ -788,9 +844,121 @@ export type NcrScanFlowDetailCandidate = FlowDetailCandidate
           logTag: '[NCR]',
         },
         pickedFlowDetail: options?.pickedFlowDetail ?? null,
-        context: { inspectorEmployeeId: options?.inspectorEmployeeId ?? 0 },
+        context: {
+          inspectorEmployeeId: options?.inspectorEmployeeId ?? 0,
+          sourceStage: options?.pickedFlowDetail?.sourceStage ?? null,
+        },
       }),
     )
+  }
+
+  /**
+   *
+   * 用例：按当前来源流程卡明细与来源阶段重新生成 NCR 草稿（不落库）。
+   * @remarks
+   * - 用于页面“来源阶段”下拉切换；\\n
+   * - 这里不重新走扫码解析，避免把 UI 状态伪装成条码输入，也避免偏离后端按来源阶段筛选的逻辑。\\n
+   *
+   */
+  public async reloadDraftByFlowDetail(input: {
+    readonly flowDetailTableName: string
+    readonly flowDetailId: number
+    readonly inspectorEmployeeId?: number | null
+    readonly sourceStage?: number | null
+  }): Promise<NcrScanExecuteResult> {
+    const flowDetailTableName = String(input?.flowDetailTableName ?? '').trim()
+    const flowDetailId = normalizePositiveInt(input?.flowDetailId)
+    if (!flowDetailTableName || !flowDetailId) {
+      return { type: 'ERROR', level: 'error', message: '来源工序明细参数不合法' }
+    }
+
+    try {
+      const pack = await QualityApi.GetDefectiveReworkOrderDraftByFlowDetail<
+        DefectiveReworkOrderDocument,
+        DefectiveReworkOrderDetail,
+        DefectiveReworkOrderCheckDetail
+      >({
+        dbName: DEFAULT_DB_NAME,
+        user: getErpUserFromStorage(),
+        inspectorEmployeeid: input?.inspectorEmployeeId ?? 0,
+        flowDetailTableName,
+        flowDetailId,
+        sourceStage: input?.sourceStage ?? null,
+      })
+
+      return this.toNcrDraftLoadedResult(pack, '未能切换来源阶段')
+    } catch (error) {
+      console.error('[NCR] 按来源阶段重新生成不合格返工单草稿失败:', error)
+      return { type: 'ERROR', level: 'error', message: '切换来源阶段失败，请稍后重试' }
+    }
+  }
+
+  /**
+   *
+   * 按 ERPClient 一致的默认顺序生成日计划 NCR 草稿。
+   * @remarks
+   * - 不预先用 FlowScan 缩小到“当前工序明细”，避免偏离后端默认候选排序；\n
+   * - 后端排序：接收顺序 -> 来源阶段（接收/首件/完工/末件）-> 工序顺序 -> 明细 id -> 最新来源单据。
+   *
+   */
+  private async createDraftByDailyPlanDefaultOrder(
+    scanForCode: string,
+    options?: { readonly inspectorEmployeeId?: number | null },
+  ): Promise<NcrScanExecuteResult> {
+    const scan = String(scanForCode ?? '').trim()
+    if (!scan) return { type: 'ERROR', level: 'warning', message: '扫描内容为空' }
+
+    try {
+      const latestNcrId = await this.tryGetLatestNcrIdByDailyPlanScanCode(scan)
+      if (latestNcrId > 0) return { type: 'OPEN_BY_ID', id: latestNcrId }
+
+      const pack = await QualityApi.GetDefectiveReworkOrderDraftByDailyPlanScanCode<
+        DefectiveReworkOrderDocument,
+        DefectiveReworkOrderDetail,
+        DefectiveReworkOrderCheckDetail
+      >({
+        dbName: DEFAULT_DB_NAME,
+        user: getErpUserFromStorage(),
+        scanForCode: scan,
+        inspectorEmployeeid: options?.inspectorEmployeeId ?? 0,
+      })
+
+      return this.toNcrDraftLoadedResult(pack, '未能生成不合格返工单')
+    } catch (error) {
+      console.error('[NCR] 扫日计划条码生成不合格返工单草稿失败:', error)
+      return { type: 'ERROR', level: 'error', message: '扫码处理失败，请稍后重试' }
+    }
+  }
+
+  /**
+   *
+   * 按 ERPClient 扫码入口一致的规则，先查询日计划下游子孙最新 NCR。
+   * @remarks
+   * - 这里只判断“已有单据是否应打开”，不参与草稿来源候选排序；\n
+   * - 若查询失败，降级继续走草稿生成，避免扫码主流程被只读检查阻断。
+   *
+   */
+  private async tryGetLatestNcrIdByDailyPlanScanCode(scanForCode: string): Promise<number> {
+    const scan = String(scanForCode ?? '').trim()
+    if (!scan) return 0
+
+    try {
+      const pack = await QualityApi.GetLatestDefectiveReworkOrderIdByDailyPlanScanCode({
+        dbName: DEFAULT_DB_NAME,
+        user: getErpUserFromStorage(),
+        scanForCode: scan,
+      })
+
+      const successRaw = pickField<unknown>(pack, 'success', 'Success', 'isSuccess', 'issuccess')
+      if (successRaw === false) return 0
+
+      const data = unwrapDataContainer(pack) ?? {}
+      const id = normalizePositiveInt(pickField<unknown>(data, 'Id', 'id'))
+      return id ?? 0
+    } catch (error) {
+      console.warn('[NCR] 查询日计划下游最新不合格返工单失败，继续尝试生成草稿:', error)
+      return 0
+    }
   }
 
   /**
@@ -807,12 +975,107 @@ export type NcrScanFlowDetailCandidate = FlowDetailCandidate
       case 'NEED_PICK_FLOW_DETAIL':
         return { type: 'NEED_PICK_FLOW_DETAIL', scanCode: r.scanCode, candidates: r.candidates }
       case 'CREATED_BY_ID':
-        return { type: 'CREATED_BY_DAILY_PLAN', id: r.id, message: r.message }
+        return { type: 'ERROR', level: 'error', message: 'NCR 不应返回 CREATED_BY_ID' }
       case 'DRAFT_LOADED':
-        return { type: 'ERROR', level: 'error', message: 'NCR 不应返回 DRAFT_LOADED' }
+        return this.toNcrDraftLoadedResult(
+          {
+            success: true,
+            message: r.message,
+            data: {
+              ...(r.rawData ?? {}),
+              Document: r.document,
+              Details: r.details,
+            },
+          },
+          '未能生成不合格返工单',
+        )
       case 'ERROR':
         return { type: 'ERROR', level: r.level, message: r.message }
     }
+  }
+
+  /**
+   *
+   * 将后端 NCR 草稿返回包转换为应用层扫码结果。
+   *
+   */
+  private toNcrDraftLoadedResult(
+    pack: unknown,
+    fallbackMessage: string,
+  ): NcrScanExecuteResult {
+    const ok = Boolean(pickField<unknown>(pack, 'success', 'Success', 'isSuccess', 'issuccess'))
+    const message = this.pickPackMessage(pack)
+    if (!ok) {
+      return {
+        type: 'ERROR',
+        level: 'error',
+        message: message || fallbackMessage,
+      }
+    }
+
+    const picked = pickDocumentAndDetails<DefectiveReworkOrderDocument, DefectiveReworkOrderDetail>(pack)
+    if (!picked?.document) {
+      return {
+        type: 'ERROR',
+        level: 'error',
+        message: message || '后端返回草稿数据异常（缺少 Document）',
+      }
+    }
+
+    const data = unwrapDataContainer(pack) ?? {}
+    const checkDetailsRaw = pickField<unknown>(data, 'CheckDetails', 'checkDetails')
+    const availableStagesRaw = pickField<unknown>(data, 'AvailableSourceStages', 'availableSourceStages')
+    const sourceStageRaw =
+      pickField<unknown>(data, 'SourceStage', 'sourceStage') ??
+      pickField<unknown>(picked.document as any, 'SourceStage', 'sourceStage')
+    const sourceFlowDetailIdRaw =
+      pickField<unknown>(data, 'SourceFlowDetailId', 'sourceFlowDetailId') ??
+      pickField<unknown>(picked.document as any, 'CreateByDetailid', 'createByDetailid')
+    const sourceFlowDetailTypeRaw =
+      pickField<unknown>(data, 'SourceFlowDetailType', 'sourceFlowDetailType') ??
+      pickField<unknown>(picked.document as any, 'CreateByDetailType', 'createByDetailType')
+
+    const sourceStage = Number(sourceStageRaw)
+    const sourceFlowDetailId = normalizePositiveInt(sourceFlowDetailIdRaw)
+    const sourceFlowDetailType = typeof sourceFlowDetailTypeRaw === 'string'
+      ? sourceFlowDetailTypeRaw.trim()
+      : sourceFlowDetailTypeRaw == null
+        ? ''
+        : String(sourceFlowDetailTypeRaw).trim()
+    const availableSourceStages = Array.isArray(availableStagesRaw)
+      ? availableStagesRaw
+          .map((v) => Number(v))
+          .filter((v) => Number.isFinite(v) && v > 0)
+      : undefined
+
+    return {
+      type: 'DRAFT_LOADED',
+      document: picked.document,
+      details: picked.details,
+      checkDetails: Array.isArray(checkDetailsRaw) ? (checkDetailsRaw as DefectiveReworkOrderCheckDetail[]) : [],
+      sourceStage: Number.isFinite(sourceStage) && sourceStage > 0 ? sourceStage : undefined,
+      availableSourceStages,
+      ...(sourceFlowDetailId ? { sourceFlowDetailId } : {}),
+      ...(sourceFlowDetailType ? { sourceFlowDetailType } : {}),
+      message: message || picked.message,
+    }
+  }
+
+  /**
+   *
+   * 提取 ApiMessagePack 的用户可见消息。
+   *
+   */
+  private pickPackMessage(pack: unknown): string {
+    const rootMessage = pickField<unknown>(pack, 'message', 'Message')
+    if (typeof rootMessage === 'string') return rootMessage.trim()
+    if (rootMessage != null) return String(rootMessage).trim()
+
+    const data = unwrapDataContainer(pack)
+    const dataMessage = pickField<unknown>(data, 'message', 'Message')
+    if (typeof dataMessage === 'string') return dataMessage.trim()
+    if (dataMessage != null) return String(dataMessage).trim()
+    return ''
   }
 
   /**

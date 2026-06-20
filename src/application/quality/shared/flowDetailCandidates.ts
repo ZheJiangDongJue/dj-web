@@ -21,6 +21,8 @@ export type FlowDetailCandidate = {
   readonly bQty?: number
   /** 可选：工种内容（TypeofWork.Content） */
   readonly typeofWorkContent?: string
+  /** 可选：NCR 来源阶段（接收/首件/完工/末件），仅 NCR 来源切换场景使用 */
+  readonly sourceStage?: number | null
 }
 
 /**

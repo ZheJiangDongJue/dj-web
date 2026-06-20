@@ -51,6 +51,8 @@ export interface CreateDefectiveReworkOrderByDailyPlanScanCodeInput {
   flowDetailTableName?: string
   /** 可选：指定流程卡明细主键（与 flowDetailTableName 配套） */
   flowDetailId?: number
+  /** 可选：指定来源阶段（接收/首件/完工/末件），与后端 DefectiveReworkSourceStage 数值保持一致 */
+  sourceStage?: number | null
 }
 
 export interface DefectiveReworkOrderDraftByInspectionInput {
@@ -69,6 +71,44 @@ export interface SaveDefectiveReworkOrderWithFilesInput {
   details: unknown[]
   checkDetails?: unknown[]
   files?: unknown[]
+}
+
+export interface DefectiveReworkOrderDraftByDailyPlanScanCodeInput extends CreateDefectiveReworkOrderByDailyPlanScanCodeInput {}
+
+export interface LatestDefectiveReworkOrderByDailyPlanScanCodeInput {
+  dbName?: string
+  user: UserInfo
+  scanForCode: string
+}
+
+export type LatestDefectiveReworkOrderResponse = {
+  Id?: number
+  id?: number
+}
+
+export type DefectiveReworkOrderDraftResponse<TDoc = unknown, TDetail = unknown, TCheckDetail = unknown> = {
+  Document?: TDoc | null
+  document?: TDoc | null
+  Details?: TDetail[]
+  details?: TDetail[]
+  CheckDetails?: TCheckDetail[]
+  checkDetails?: TCheckDetail[]
+  SourceDocumentId?: number
+  sourceDocumentId?: number
+  SourceDocumentType?: string
+  sourceDocumentType?: string
+  SourceFlowDetailId?: number
+  sourceFlowDetailId?: number
+  SourceFlowDetailType?: string
+  sourceFlowDetailType?: string
+  SourceStage?: number
+  sourceStage?: number
+  AvailableSourceStages?: number[]
+  availableSourceStages?: number[]
+  SourceInspectionId?: number
+  sourceInspectionId?: number
+  SourceInspectionType?: string
+  sourceInspectionType?: string
 }
 
 async function lookupFirstIdByCodeForScan(
@@ -165,6 +205,7 @@ export async function CreateDefectiveReworkOrderByDailyPlanScanCode(
     InspectorEmployeeid: payload.inspectorEmployeeid ?? 0,
     FlowDetailTableName: payload.flowDetailTableName ?? '',
     FlowDetailId: payload.flowDetailId ?? 0,
+    SourceStage: payload.sourceStage ?? null,
   }
   return _client.callActionRaw<ApiMessagePack<{ Id: number; SourceInspectionId?: number; SourceInspectionType?: string }>>(
     'CreateDefectiveReworkOrderByDailyPlanScanCode',
@@ -178,7 +219,11 @@ export interface CreateDefectiveReworkOrderByFlowDetailInput {
   inspectorEmployeeid?: number
   flowDetailTableName: string
   flowDetailId: number
+  /** 可选：指定来源阶段（接收/首件/完工/末件），与后端 DefectiveReworkSourceStage 数值保持一致 */
+  sourceStage?: number | null
 }
+
+export interface DefectiveReworkOrderDraftByFlowDetailInput extends CreateDefectiveReworkOrderByFlowDetailInput {}
 
 /**
  *
@@ -195,9 +240,85 @@ export async function CreateDefectiveReworkOrderByFlowDetail(
     InspectorEmployeeid: payload.inspectorEmployeeid ?? 0,
     FlowDetailTableName: payload.flowDetailTableName ?? '',
     FlowDetailId: payload.flowDetailId ?? 0,
+    SourceStage: payload.sourceStage ?? null,
   }
   return _client.callActionRaw<ApiMessagePack<{ Id: number; SourceInspectionId?: number; SourceInspectionType?: string }>>(
     'CreateDefectiveReworkOrderByFlowDetail',
+    { method: 'POST', body } as ActionCallOptions,
+  )
+}
+
+/**
+ *
+ * 扫描日计划条码（DailyPlanDetail.CodeForScan）生成不合格返工单草稿（不落库）。
+ * 对应 C#: [HttpPost] GetDefectiveReworkOrderDraftByDailyPlanScanCode([FromBody] CreateDefectiveReworkOrderByDailyPlanScanCodeRequest request)
+ *
+ */
+export async function GetDefectiveReworkOrderDraftByDailyPlanScanCode<
+  TDoc = unknown,
+  TDetail = unknown,
+  TCheckDetail = unknown,
+>(
+  payload: DefectiveReworkOrderDraftByDailyPlanScanCodeInput,
+): Promise<ApiMessagePack<DefectiveReworkOrderDraftResponse<TDoc, TDetail, TCheckDetail>>> {
+  const body = {
+    DbName: payload.dbName ?? DEFAULT_DB_NAME,
+    User: payload.user,
+    ScanForCode: payload.scanForCode ?? '',
+    InspectorEmployeeid: payload.inspectorEmployeeid ?? 0,
+    FlowDetailTableName: payload.flowDetailTableName ?? '',
+    FlowDetailId: payload.flowDetailId ?? 0,
+    SourceStage: payload.sourceStage ?? null,
+  }
+  return _client.callActionRaw<ApiMessagePack<DefectiveReworkOrderDraftResponse<TDoc, TDetail, TCheckDetail>>>(
+    'GetDefectiveReworkOrderDraftByDailyPlanScanCode',
+    { method: 'POST', body } as ActionCallOptions,
+  )
+}
+
+/**
+ *
+ * 扫描日计划条码查询其下游子孙最新一张不合格返工单。
+ * 对应 C#: [HttpPost] GetLatestDefectiveReworkOrderIdByDailyPlanScanCode([FromBody] CreateDefectiveReworkOrderByDailyPlanScanCodeRequest request)
+ *
+ */
+export async function GetLatestDefectiveReworkOrderIdByDailyPlanScanCode(
+  payload: LatestDefectiveReworkOrderByDailyPlanScanCodeInput,
+): Promise<ApiMessagePack<LatestDefectiveReworkOrderResponse>> {
+  const body = {
+    DbName: payload.dbName ?? DEFAULT_DB_NAME,
+    User: payload.user,
+    ScanForCode: payload.scanForCode ?? '',
+  }
+  return _client.callActionRaw<ApiMessagePack<LatestDefectiveReworkOrderResponse>>(
+    'GetLatestDefectiveReworkOrderIdByDailyPlanScanCode',
+    { method: 'POST', body } as ActionCallOptions,
+  )
+}
+
+/**
+ *
+ * 按流程卡工序明细生成不合格返工单草稿（不落库）。
+ * 对应 C#: [HttpPost] GetDefectiveReworkOrderDraftByFlowDetail([FromBody] CreateDefectiveReworkOrderByFlowDetailRequest request)
+ *
+ */
+export async function GetDefectiveReworkOrderDraftByFlowDetail<
+  TDoc = unknown,
+  TDetail = unknown,
+  TCheckDetail = unknown,
+>(
+  payload: DefectiveReworkOrderDraftByFlowDetailInput,
+): Promise<ApiMessagePack<DefectiveReworkOrderDraftResponse<TDoc, TDetail, TCheckDetail>>> {
+  const body = {
+    DbName: payload.dbName ?? DEFAULT_DB_NAME,
+    User: payload.user,
+    InspectorEmployeeid: payload.inspectorEmployeeid ?? 0,
+    FlowDetailTableName: payload.flowDetailTableName ?? '',
+    FlowDetailId: payload.flowDetailId ?? 0,
+    SourceStage: payload.sourceStage ?? null,
+  }
+  return _client.callActionRaw<ApiMessagePack<DefectiveReworkOrderDraftResponse<TDoc, TDetail, TCheckDetail>>>(
+    'GetDefectiveReworkOrderDraftByFlowDetail',
     { method: 'POST', body } as ActionCallOptions,
   )
 }
@@ -234,11 +355,8 @@ export interface DailyPlanInspectionInput {
 }
 
 type InspectionDraft<TDoc, TDetail> = ApiMessagePack<{ Document?: TDoc | null; Details?: TDetail[] }>
-type DefectiveReworkOrderDraft<TDoc, TDetail, TCheckDetail> = ApiMessagePack<{
-  Document?: TDoc | null
-  Details?: TDetail[]
-  CheckDetails?: TCheckDetail[]
-}>
+type DefectiveReworkOrderDraft<TDoc, TDetail, TCheckDetail> =
+  ApiMessagePack<DefectiveReworkOrderDraftResponse<TDoc, TDetail, TCheckDetail>>
 
 /**
  *
@@ -461,6 +579,9 @@ export const QualityApi = {
   GetFinalInspectionDraftByDefectiveReworkOrder,
   GetFirstInspectionDraftByDefectiveReworkOrder,
   GetDefectiveReworkOrderDraftByInspection,
+  GetLatestDefectiveReworkOrderIdByDailyPlanScanCode,
+  GetDefectiveReworkOrderDraftByDailyPlanScanCode,
+  GetDefectiveReworkOrderDraftByFlowDetail,
   CreateDefectiveReworkOrderByDailyPlanScanCode,
   CreateDefectiveReworkOrderByFlowDetail,
   SaveDefectiveReworkOrderWithFiles,

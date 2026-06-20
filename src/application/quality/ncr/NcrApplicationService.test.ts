@@ -15,8 +15,10 @@ vi.mock('@/lib/erp/bill-api', () => ({
 vi.mock('@/lib/erp/quality-api', () => ({
   QualityApi: {
     SaveDefectiveReworkOrderWithFiles: vi.fn(),
-    CreateDefectiveReworkOrderByDailyPlanScanCode: vi.fn(),
-    CreateDefectiveReworkOrderByFlowDetail: vi.fn(),
+    GetLatestDefectiveReworkOrderIdByDailyPlanScanCode: vi.fn(),
+    GetDefectiveReworkOrderDraftByDailyPlanScanCode: vi.fn(),
+    GetDefectiveReworkOrderDraftByFlowDetail: vi.fn(),
+    GetDefectiveReworkOrderDraftByInspection: vi.fn(),
   },
 }))
 
@@ -28,6 +30,33 @@ vi.mock('@/lib/erp/flow-scan-api', () => ({
   FlowScanDocumentKind: { FlowCard: 1, ProcessReceive: 2, FirstInspection: 3, ProcessCompletion: 4, FinalInspection: 5, Ncr: 6 },
   FlowScanCheckState: { NotCreated: 0, CreatedNotApproved: 1, CreatedApproved: 2, ApprovedReadyForNext: 3, Unfinished: 4, PrevCompletedCurrentUnfinished: 5 },
 }))
+
+function ncrDraftPack(
+  document: Record<string, unknown> = { id: 0 },
+  options?: {
+    readonly message?: string
+    readonly details?: readonly Record<string, unknown>[]
+    readonly checkDetails?: readonly Record<string, unknown>[]
+    readonly sourceStage?: number
+    readonly availableSourceStages?: readonly number[]
+    readonly sourceFlowDetailId?: number
+    readonly sourceFlowDetailType?: string
+  },
+) {
+  return {
+    success: true,
+    message: options?.message,
+    data: {
+      Document: document,
+      Details: [...(options?.details ?? [])],
+      CheckDetails: [...(options?.checkDetails ?? [])],
+      SourceStage: options?.sourceStage,
+      AvailableSourceStages: options?.availableSourceStages ? [...options.availableSourceStages] : undefined,
+      SourceFlowDetailId: options?.sourceFlowDetailId,
+      SourceFlowDetailType: options?.sourceFlowDetailType,
+    },
+  }
+}
 
 vi.mock('@/lib/erp/lookup-core', () => ({ fetchLookup: vi.fn() }))
 
@@ -934,7 +963,6 @@ describe('NcrApplicationService', () => {
   it('executeScan: 覆盖空/不支持/id 打开/设置检验员/日计划生成等分支', async () => {
     const { fetchLookup } = await import('@/lib/erp/lookup-core')
     const { QualityApi } = await import('@/lib/erp/quality-api')
-    const { FlowScanApi } = await import('@/lib/erp/flow-scan-api')
     const { NcrApplicationService } = await import('./NcrApplicationService')
 
     const lookupMock = fetchLookup as unknown as Mock
@@ -943,18 +971,22 @@ describe('NcrApplicationService', () => {
       .mockResolvedValueOnce([{ id: '0', Name: 'X' }]) // invalid id
       .mockResolvedValueOnce([{ id: 9, Name: '张三' }]) // ok
 
-    const flowScanMock = FlowScanApi.CheckDocumentState as unknown as Mock
-    flowScanMock
-      .mockResolvedValueOnce({ success: true, message: '', data: { Items: [{ Matched: true, FlowDetail: { TableName: 'ProcessAssemblyFlowDetail', id: 11 } }] } })
-      .mockResolvedValueOnce({ success: true, message: '', data: { Items: [{ Matched: true, FlowDetail: { TableName: 'ProcessAssemblyFlowDetail', id: 11 } }] } })
-      .mockResolvedValueOnce({ success: true, message: '', data: { Items: [{ Matched: true, FlowDetail: { TableName: 'ProcessAssemblyFlowDetail', id: 11 } }] } })
-      .mockResolvedValueOnce({ success: true, message: '', data: { Items: [{ Matched: true, FlowDetail: { TableName: 'ProcessAssemblyFlowDetail', id: 11 } }] } })
-
-    const createMock = QualityApi.CreateDefectiveReworkOrderByDailyPlanScanCode as unknown as Mock
-    createMock
-      .mockResolvedValueOnce({ success: true, message: 'm', data: { Id: 88 } })
+    const draftMock = QualityApi.GetDefectiveReworkOrderDraftByDailyPlanScanCode as unknown as Mock
+    draftMock
+      .mockResolvedValueOnce(ncrDraftPack(
+        { id: 0, Code: 'DRAFT-1' },
+        {
+          message: 'm',
+          details: [{ id: 0, Qty: 1 }],
+          checkDetails: [{ id: 0, CheckResult: 2 }],
+          sourceStage: 2,
+          availableSourceStages: [1, 2, 3, 4],
+          sourceFlowDetailId: 11,
+          sourceFlowDetailType: 'ProcessAssemblyFlowDetail',
+        },
+      ))
       .mockResolvedValueOnce({ success: false, message: 'bad' })
-      .mockResolvedValueOnce({ success: true, message: '', data: { Id: 0 } })
+      .mockResolvedValueOnce({ success: true, message: '', data: { Details: [] } })
       .mockRejectedValueOnce(new Error('net'))
 
     const service = new NcrApplicationService({ delete: vi.fn() } as any)
@@ -1007,8 +1039,14 @@ describe('NcrApplicationService', () => {
     })
 
     await expect(service.executeScan('RJH-001')).resolves.toEqual({
-      type: 'CREATED_BY_DAILY_PLAN',
-      id: 88,
+      type: 'DRAFT_LOADED',
+      document: { id: 0, Code: 'DRAFT-1' },
+      details: [{ id: 0, Qty: 1 }],
+      checkDetails: [{ id: 0, CheckResult: 2 }],
+      sourceStage: 2,
+      availableSourceStages: [1, 2, 3, 4],
+      sourceFlowDetailId: 11,
+      sourceFlowDetailType: 'ProcessAssemblyFlowDetail',
       message: 'm',
     })
 
@@ -1021,7 +1059,7 @@ describe('NcrApplicationService', () => {
     await expect(service.executeScan('RJH-001')).resolves.toEqual({
       type: 'ERROR',
       level: 'error',
-      message: '后端返回单据ID异常，无法打开',
+      message: '后端返回草稿数据异常（缺少 Document）',
     })
 
     await expect(service.executeScan('RJH-001')).resolves.toEqual({
@@ -1045,11 +1083,19 @@ describe('NcrApplicationService', () => {
       },
     })
 
-    const createMock = (QualityApi as any).CreateDefectiveReworkOrderByFlowDetail as Mock
-    createMock.mockResolvedValueOnce({ success: true, message: 'm', data: { Id: 321 } })
+    const createMock = (QualityApi as any).GetDefectiveReworkOrderDraftByFlowDetail as Mock
+    createMock.mockResolvedValueOnce(ncrDraftPack({ id: 0, Code: 'FGD-DRAFT' }, { message: 'm' }))
 
     const service = new NcrApplicationService({ delete: vi.fn() } as any)
-    await expect(service.executeScan('FGD-001')).resolves.toEqual({ type: 'CREATED_BY_DAILY_PLAN', id: 321, message: 'm' })
+    await expect(service.executeScan('FGD-001')).resolves.toEqual({
+      type: 'DRAFT_LOADED',
+      document: { id: 0, Code: 'FGD-DRAFT' },
+      details: [],
+      checkDetails: [],
+      sourceStage: undefined,
+      availableSourceStages: undefined,
+      message: 'm',
+    })
     expect(createMock).toHaveBeenCalledWith(
       expect.objectContaining({ flowDetailTableName: 'ProcessAssemblyFlowDetail', flowDetailId: 11, inspectorEmployeeid: 0 }),
     )
@@ -1069,11 +1115,19 @@ describe('NcrApplicationService', () => {
       },
     })
 
-    const createMock = (QualityApi as any).CreateDefectiveReworkOrderByFlowDetail as Mock
-    createMock.mockResolvedValueOnce({ success: true, message: 'm', data: { Id: 123 } })
+    const createMock = (QualityApi as any).GetDefectiveReworkOrderDraftByFlowDetail as Mock
+    createMock.mockResolvedValueOnce(ncrDraftPack({ id: 0, Code: 'JCJH-DRAFT' }, { message: 'm' }))
 
     const service = new NcrApplicationService({ delete: vi.fn() } as any)
-    await expect(service.executeScan('JCJH-202603050001')).resolves.toEqual({ type: 'CREATED_BY_DAILY_PLAN', id: 123, message: 'm' })
+    await expect(service.executeScan('JCJH-202603050001')).resolves.toEqual({
+      type: 'DRAFT_LOADED',
+      document: { id: 0, Code: 'JCJH-DRAFT' },
+      details: [],
+      checkDetails: [],
+      sourceStage: undefined,
+      availableSourceStages: undefined,
+      message: 'm',
+    })
     expect(flowScanMock).toHaveBeenCalledWith(expect.objectContaining({ sourceType: 2 }))
     expect(createMock).toHaveBeenCalledWith(
       expect.objectContaining({ flowDetailTableName: 'ProduceFlowDetail', flowDetailId: 11, inspectorEmployeeid: 0 }),
@@ -1110,149 +1164,110 @@ describe('NcrApplicationService', () => {
     })
   })
 
-  it('executeScan: 日计划扫码存在多条当前工序明细时返回 NEED_PICK_FLOW_DETAIL（含排序/工种信息）', async () => {
-    const { fetchLookup } = await import('@/lib/erp/lookup-core')
+  it('executeScan: 日计划扫码未手动选择工序时直接走后端默认顺序生成草稿', async () => {
     const { FlowScanApi } = await import('@/lib/erp/flow-scan-api')
+    const { QualityApi } = await import('@/lib/erp/quality-api')
     const { NcrApplicationService } = await import('./NcrApplicationService')
 
     const flowScanMock = FlowScanApi.CheckDocumentState as unknown as Mock
-    flowScanMock.mockResolvedValueOnce({
-      success: true,
-      message: '',
-      data: {
-        Items: [
-          { Matched: true, FlowDetail: { TableName: 'ProcessAssemblyFlowDetail', id: 22 } },
-          { Matched: true, FlowDetail: { TableName: 'ProcessAssemblyFlowDetail', id: 11 } },
-        ],
-      },
-    })
-
-    const lookupMock = fetchLookup as unknown as Mock
-    lookupMock
-      .mockResolvedValueOnce([{ id: 22, TypeofWorkid: 100, LocationIndex: 5 }])
-      .mockResolvedValueOnce([{ id: 11, TypeofWorkid: 101, LocationIndex: 2 }])
+    const latestMock = QualityApi.GetLatestDefectiveReworkOrderIdByDailyPlanScanCode as unknown as Mock
+    const draftMock = QualityApi.GetDefectiveReworkOrderDraftByDailyPlanScanCode as unknown as Mock
+    latestMock.mockResolvedValueOnce({ success: true, message: '', data: { Id: 0 } })
+    draftMock.mockResolvedValueOnce(ncrDraftPack({ id: 0, Code: 'RJH-DRAFT' }, { message: 'draft' }))
 
     const service = new NcrApplicationService({ delete: vi.fn() } as any)
     await expect(service.executeScan('RJH-001')).resolves.toEqual({
-      type: 'NEED_PICK_FLOW_DETAIL',
-      scanCode: 'RJH-001',
-      candidates: [
-        { flowDetailTableName: 'ProcessAssemblyFlowDetail', flowDetailId: 11, typeofWorkId: 101, locationIndex: 2 },
-        { flowDetailTableName: 'ProcessAssemblyFlowDetail', flowDetailId: 22, typeofWorkId: 100, locationIndex: 5 },
-      ],
+      type: 'DRAFT_LOADED',
+      document: { id: 0, Code: 'RJH-DRAFT' },
+      details: [],
+      checkDetails: [],
+      sourceStage: undefined,
+      availableSourceStages: undefined,
+      message: 'draft',
     })
+    expect(flowScanMock).not.toHaveBeenCalled()
+    expect(draftMock).toHaveBeenCalledWith(expect.objectContaining({ scanForCode: 'RJH-001' }))
+    expect(draftMock.mock.calls[0]?.[0]).not.toHaveProperty('flowDetailTableName')
+    expect(draftMock.mock.calls[0]?.[0]).not.toHaveProperty('flowDetailId')
   })
 
-  it('executeScan: 日计划扫码多条当前工序明细且存在未审批单据时直接 OPEN_BY_ID（不弹窗选明细）', async () => {
+  it('executeScan: 日计划扫码存在下游 NCR 时按 ERPClient 规则直接打开最新单据', async () => {
     const { fetchLookup } = await import('@/lib/erp/lookup-core')
     const { FlowScanApi } = await import('@/lib/erp/flow-scan-api')
     const { QualityApi } = await import('@/lib/erp/quality-api')
     const { NcrApplicationService } = await import('./NcrApplicationService')
 
     const flowScanMock = FlowScanApi.CheckDocumentState as unknown as Mock
-    flowScanMock.mockResolvedValueOnce({
-      success: true,
-      message: '',
-      data: {
-        Items: [
-          {
-            Matched: true,
-            FlowDetail: { TableName: 'ProcessAssemblyFlowDetail', id: 22 },
-            Documents: [
-              { TableName: 'DefectiveReworkOrderDocument', Id: 8, Status: 0 },
-              { TableName: 'DefectiveReworkOrderDocument', Id: 9, Status: 0 },
-            ],
-          },
-          { Matched: true, FlowDetail: { TableName: 'ProcessAssemblyFlowDetail', id: 11 } },
-        ],
-      },
-    })
-
     const lookupMock = fetchLookup as unknown as Mock
-    const createMock = QualityApi.CreateDefectiveReworkOrderByDailyPlanScanCode as unknown as Mock
+    const latestMock = QualityApi.GetLatestDefectiveReworkOrderIdByDailyPlanScanCode as unknown as Mock
+    const draftMock = QualityApi.GetDefectiveReworkOrderDraftByDailyPlanScanCode as unknown as Mock
+    latestMock.mockResolvedValueOnce({ success: true, message: '', data: { Id: 9 } })
 
     const service = new NcrApplicationService({ delete: vi.fn() } as any)
     await expect(service.executeScan('RJH-001')).resolves.toEqual({ type: 'OPEN_BY_ID', id: 9 })
+    expect(flowScanMock).not.toHaveBeenCalled()
     expect(lookupMock).not.toHaveBeenCalled()
-    expect(createMock).not.toHaveBeenCalled()
+    expect(draftMock).not.toHaveBeenCalled()
   })
 
-  it('executeDailyPlanScanCreate: 已存在未完成单据时优先 OPEN_BY_ID（避免重复生成）', async () => {
+  it('executeDailyPlanScanCreate: 已存在下游 NCR 时优先 OPEN_BY_ID（避免重复生成）', async () => {
     const { FlowScanApi } = await import('@/lib/erp/flow-scan-api')
     const { QualityApi } = await import('@/lib/erp/quality-api')
     const { NcrApplicationService } = await import('./NcrApplicationService')
 
     const flowScanMock = FlowScanApi.CheckDocumentState as unknown as Mock
-    flowScanMock.mockResolvedValueOnce({
-      success: true,
-      message: '',
-      data: {
-        Items: [
-          {
-            Matched: true,
-            FlowDetail: { TableName: 'ProcessAssemblyFlowDetail', Id: 11 },
-            Documents: [
-              { TableName: 'DefectiveReworkOrderDocument', Id: 8, Status: 0 },
-              { TableName: 'DefectiveReworkOrderDocument', Id: 9, Status: 0 },
-            ],
-          },
-        ],
-      },
-    })
-
-    const createMock = QualityApi.CreateDefectiveReworkOrderByDailyPlanScanCode as unknown as Mock
-    createMock.mockResolvedValueOnce({ success: true, message: '', data: { Id: 1 } })
+    const latestMock = QualityApi.GetLatestDefectiveReworkOrderIdByDailyPlanScanCode as unknown as Mock
+    const draftMock = QualityApi.GetDefectiveReworkOrderDraftByDailyPlanScanCode as unknown as Mock
+    latestMock.mockResolvedValueOnce({ success: true, message: '', data: { Id: 9 } })
 
     const service = new NcrApplicationService({ delete: vi.fn() } as any)
     await expect(service.executeDailyPlanScanCreate('RJH-001')).resolves.toEqual({ type: 'OPEN_BY_ID', id: 9 })
-    expect(createMock).not.toHaveBeenCalled()
+    expect(flowScanMock).not.toHaveBeenCalled()
+    expect(draftMock).not.toHaveBeenCalled()
   })
 
-  it('executeDailyPlanScanCreate: 仅存在已审批单据时不应 OPEN_BY_ID，应继续创建', async () => {
+  it('executeDailyPlanScanCreate: 无下游 NCR 时继续按后端默认顺序生成草稿', async () => {
     const { FlowScanApi } = await import('@/lib/erp/flow-scan-api')
     const { QualityApi } = await import('@/lib/erp/quality-api')
     const { NcrApplicationService } = await import('./NcrApplicationService')
 
     const flowScanMock = FlowScanApi.CheckDocumentState as unknown as Mock
-    flowScanMock.mockResolvedValueOnce({
-      success: true,
-      message: '',
-      data: {
-        Items: [
-          {
-            Matched: true,
-            FlowDetail: { TableName: 'ProcessAssemblyFlowDetail', id: 11 },
-            Documents: [{ TableName: 'DefectiveReworkOrderDocument', Id: 9, Status: 1 }],
-          },
-        ],
-      },
-    })
-
-    const createMock = QualityApi.CreateDefectiveReworkOrderByDailyPlanScanCode as unknown as Mock
-    createMock.mockResolvedValueOnce({ success: true, message: '', data: { Id: 123 } })
+    const latestMock = QualityApi.GetLatestDefectiveReworkOrderIdByDailyPlanScanCode as unknown as Mock
+    const draftMock = QualityApi.GetDefectiveReworkOrderDraftByDailyPlanScanCode as unknown as Mock
+    latestMock.mockResolvedValueOnce({ success: true, message: '', data: { Id: 0 } })
+    draftMock.mockResolvedValueOnce(ncrDraftPack({ id: 0, Code: 'NEW-DRAFT' }))
 
     const service = new NcrApplicationService({ delete: vi.fn() } as any)
     await expect(service.executeDailyPlanScanCreate('RJH-001')).resolves.toEqual({
-      type: 'CREATED_BY_DAILY_PLAN',
-      id: 123,
+      type: 'DRAFT_LOADED',
+      document: { id: 0, Code: 'NEW-DRAFT' },
+      details: [],
+      checkDetails: [],
+      sourceStage: undefined,
+      availableSourceStages: undefined,
       message: undefined,
     })
+    expect(flowScanMock).not.toHaveBeenCalled()
   })
 
   it('executeDailyPlanScanCreate: 传入 pickedFlowDetail 时直接透传 FlowDetail 参数并生成', async () => {
     const { QualityApi } = await import('@/lib/erp/quality-api')
     const { NcrApplicationService } = await import('./NcrApplicationService')
 
-    const createMock = QualityApi.CreateDefectiveReworkOrderByDailyPlanScanCode as unknown as Mock
-    createMock.mockResolvedValueOnce({ success: true, message: '', data: { Id: 1 } })
+    const createMock = QualityApi.GetDefectiveReworkOrderDraftByDailyPlanScanCode as unknown as Mock
+    createMock.mockResolvedValueOnce(ncrDraftPack({ id: 0, Code: 'PICKED-DRAFT' }))
 
     const service = new NcrApplicationService({ delete: vi.fn() } as any)
     await expect(
       service.executeDailyPlanScanCreate('RJH-001', {
         inspectorEmployeeId: 3,
-        pickedFlowDetail: { tableName: 'ProcessAssemblyFlowDetail', id: 11 },
+        pickedFlowDetail: { tableName: 'ProcessAssemblyFlowDetail', id: 11, sourceStage: 3 },
       }),
-    ).resolves.toEqual({ type: 'CREATED_BY_DAILY_PLAN', id: 1, message: undefined })
+    ).resolves.toMatchObject({
+      type: 'DRAFT_LOADED',
+      document: { id: 0, Code: 'PICKED-DRAFT' },
+      message: undefined,
+    })
 
     expect(createMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -1260,6 +1275,49 @@ describe('NcrApplicationService', () => {
         inspectorEmployeeid: 3,
         flowDetailTableName: 'ProcessAssemblyFlowDetail',
         flowDetailId: 11,
+        sourceStage: 3,
+      }),
+    )
+  })
+
+  it('reloadDraftByFlowDetail: 按来源流程卡明细和来源阶段重拉 NCR 草稿', async () => {
+    const { QualityApi } = await import('@/lib/erp/quality-api')
+    const { NcrApplicationService } = await import('./NcrApplicationService')
+
+    const createMock = QualityApi.GetDefectiveReworkOrderDraftByFlowDetail as unknown as Mock
+    createMock.mockResolvedValueOnce(ncrDraftPack(
+      { id: 0, Code: 'STAGE-DRAFT', SourceStage: 4 },
+      {
+        sourceStage: 4,
+        availableSourceStages: [1, 2, 3, 4],
+        sourceFlowDetailId: 11,
+        sourceFlowDetailType: 'ProcessAssemblyFlowDetail',
+      },
+    ))
+
+    const service = new NcrApplicationService({ delete: vi.fn() } as any)
+    await expect(
+      service.reloadDraftByFlowDetail({
+        flowDetailTableName: 'ProcessAssemblyFlowDetail',
+        flowDetailId: 11,
+        inspectorEmployeeId: 3,
+        sourceStage: 4,
+      }),
+    ).resolves.toMatchObject({
+      type: 'DRAFT_LOADED',
+      document: { id: 0, Code: 'STAGE-DRAFT', SourceStage: 4 },
+      sourceStage: 4,
+      sourceFlowDetailId: 11,
+      sourceFlowDetailType: 'ProcessAssemblyFlowDetail',
+      availableSourceStages: [1, 2, 3, 4],
+    })
+
+    expect(createMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        flowDetailTableName: 'ProcessAssemblyFlowDetail',
+        flowDetailId: 11,
+        inspectorEmployeeid: 3,
+        sourceStage: 4,
       }),
     )
   })
@@ -1281,17 +1339,9 @@ describe('NcrApplicationService', () => {
 
   it('executeScan: 日计划生成失败但 message 为空时使用默认文案', async () => {
     const { QualityApi } = await import('@/lib/erp/quality-api')
-    const { FlowScanApi } = await import('@/lib/erp/flow-scan-api')
     const { NcrApplicationService } = await import('./NcrApplicationService')
 
-    const flowScanMock = FlowScanApi.CheckDocumentState as unknown as Mock
-    flowScanMock.mockResolvedValueOnce({
-      success: true,
-      message: '',
-      data: { Items: [{ Matched: true, FlowDetail: { TableName: 'ProcessAssemblyFlowDetail', id: 11 } }] },
-    })
-
-    const createMock = QualityApi.CreateDefectiveReworkOrderByDailyPlanScanCode as unknown as Mock
+    const createMock = QualityApi.GetDefectiveReworkOrderDraftByDailyPlanScanCode as unknown as Mock
     createMock.mockResolvedValueOnce({ success: false, message: '' })
 
     const service = new NcrApplicationService({ delete: vi.fn() } as any)
@@ -1302,25 +1352,21 @@ describe('NcrApplicationService', () => {
     })
   })
 
-  it('executeScan: 日计划返回 data.id 且 message 缺失时 message 为 undefined（覆盖兼容分支）', async () => {
+  it('executeScan: 日计划草稿 message 缺失时 message 为 undefined（覆盖兼容分支）', async () => {
     const { QualityApi } = await import('@/lib/erp/quality-api')
-    const { FlowScanApi } = await import('@/lib/erp/flow-scan-api')
     const { NcrApplicationService } = await import('./NcrApplicationService')
 
-    const flowScanMock = FlowScanApi.CheckDocumentState as unknown as Mock
-    flowScanMock.mockResolvedValueOnce({
-      success: true,
-      message: '',
-      data: { Items: [{ Matched: true, FlowDetail: { TableName: 'ProcessAssemblyFlowDetail', id: 11 } }] },
-    })
-
-    const createMock = QualityApi.CreateDefectiveReworkOrderByDailyPlanScanCode as unknown as Mock
-    createMock.mockResolvedValueOnce({ success: true, data: { id: 77 } })
+    const createMock = QualityApi.GetDefectiveReworkOrderDraftByDailyPlanScanCode as unknown as Mock
+    createMock.mockResolvedValueOnce(ncrDraftPack({ id: 0, Code: 'NO-MESSAGE' }))
 
     const service = new NcrApplicationService({ delete: vi.fn() } as any)
     await expect(service.executeScan('RJH-001')).resolves.toEqual({
-      type: 'CREATED_BY_DAILY_PLAN',
-      id: 77,
+      type: 'DRAFT_LOADED',
+      document: { id: 0, Code: 'NO-MESSAGE' },
+      details: [],
+      checkDetails: [],
+      sourceStage: undefined,
+      availableSourceStages: undefined,
       message: undefined,
     })
   })
@@ -1350,21 +1396,18 @@ describe('NcrApplicationService', () => {
     }
 
     const { QualityApi } = await import('@/lib/erp/quality-api')
-    const { FlowScanApi } = await import('@/lib/erp/flow-scan-api')
     const { NcrApplicationService } = await import('./NcrApplicationService')
 
-    const flowScanMock = FlowScanApi.CheckDocumentState as unknown as Mock
-    flowScanMock.mockResolvedValueOnce({
-      success: true,
-      message: '',
-      data: { Items: [{ Matched: true, FlowDetail: { TableName: 'ProcessAssemblyFlowDetail', id: 11 } }] },
-    })
-
-    const createMock = QualityApi.CreateDefectiveReworkOrderByDailyPlanScanCode as unknown as Mock
-    createMock.mockResolvedValueOnce({ success: true, message: '', data: { Id: 1 } })
+    const latestMock = QualityApi.GetLatestDefectiveReworkOrderIdByDailyPlanScanCode as unknown as Mock
+    latestMock.mockResolvedValueOnce({ success: true, message: '', data: { Id: 0 } })
+    const createMock = QualityApi.GetDefectiveReworkOrderDraftByDailyPlanScanCode as unknown as Mock
+    createMock.mockResolvedValueOnce(ncrDraftPack({ id: 0 }))
 
     const service = new NcrApplicationService({ delete: vi.fn() } as any)
     await service.executeScan('RJH-001')
+    expect(latestMock).toHaveBeenCalledWith(
+      expect.objectContaining({ user: { UserID: 1 } }),
+    )
     expect(createMock).toHaveBeenCalledWith(
       expect.objectContaining({ user: { UserID: 1 } }),
     )
@@ -1372,18 +1415,10 @@ describe('NcrApplicationService', () => {
 
   it('executeScan: localStorage 为空/非对象/JSON 异常时 user 兜底为 {}', async () => {
     const { QualityApi } = await import('@/lib/erp/quality-api')
-    const { FlowScanApi } = await import('@/lib/erp/flow-scan-api')
     const { NcrApplicationService } = await import('./NcrApplicationService')
 
-    const createMock = QualityApi.CreateDefectiveReworkOrderByDailyPlanScanCode as unknown as Mock
+    const createMock = QualityApi.GetDefectiveReworkOrderDraftByDailyPlanScanCode as unknown as Mock
     createMock.mockResolvedValue({ success: false, message: 'x' })
-
-    const flowScanMock = FlowScanApi.CheckDocumentState as unknown as Mock
-    flowScanMock.mockResolvedValue({
-      success: true,
-      message: '',
-      data: { Items: [{ Matched: true, FlowDetail: { TableName: 'ProcessAssemblyFlowDetail', id: 11 } }] },
-    })
 
     const service = new NcrApplicationService({ delete: vi.fn() } as any)
     const invalidJson = '{'
@@ -1401,30 +1436,24 @@ describe('NcrApplicationService', () => {
     expect(createMock.mock.calls[2]?.[0]?.user).toEqual({})
   })
 
-  it('executeScan: 日计划返回超大 Id 时视为异常（覆盖 normalizePositiveInt 上限分支）', async () => {
+  it('executeScan: 最新下游 NCR 返回超大 Id 时忽略并继续生成草稿', async () => {
     const { QualityApi } = await import('@/lib/erp/quality-api')
-    const { FlowScanApi } = await import('@/lib/erp/flow-scan-api')
     const { NcrApplicationService } = await import('./NcrApplicationService')
 
-    const flowScanMock = FlowScanApi.CheckDocumentState as unknown as Mock
-    flowScanMock.mockResolvedValueOnce({
-      success: true,
-      message: '',
-      data: { Items: [{ Matched: true, FlowDetail: { TableName: 'ProcessAssemblyFlowDetail', id: 11 } }] },
-    })
-
-    const createMock = QualityApi.CreateDefectiveReworkOrderByDailyPlanScanCode as unknown as Mock
-    createMock.mockResolvedValueOnce({
-      success: true,
-      message: '',
-      data: { Id: Number.MAX_SAFE_INTEGER + 1 },
-    })
+    const latestMock = QualityApi.GetLatestDefectiveReworkOrderIdByDailyPlanScanCode as unknown as Mock
+    latestMock.mockResolvedValueOnce({ success: true, message: '', data: { Id: Number.MAX_SAFE_INTEGER + 1 } })
+    const createMock = QualityApi.GetDefectiveReworkOrderDraftByDailyPlanScanCode as unknown as Mock
+    createMock.mockResolvedValueOnce(ncrDraftPack({ id: 0, Code: 'AFTER-LATEST' }))
 
     const service = new NcrApplicationService({ delete: vi.fn() } as any)
     await expect(service.executeScan('RJH-001')).resolves.toEqual({
-      type: 'ERROR',
-      level: 'error',
-      message: '后端返回单据ID异常，无法打开',
+      type: 'DRAFT_LOADED',
+      document: { id: 0, Code: 'AFTER-LATEST' },
+      details: [],
+      checkDetails: [],
+      sourceStage: undefined,
+      availableSourceStages: undefined,
+      message: undefined,
     })
   })
 

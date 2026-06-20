@@ -23,7 +23,13 @@ import { extractErrorMessage, normalizePositiveInt } from '@/application/quality
 export type ScanDocumentFlowResult<TDoc, TDetail> =
   | { readonly type: 'OPEN_BY_ID'; readonly id: number }
   | { readonly type: 'NEED_PICK_FLOW_DETAIL'; readonly scanCode: string; readonly candidates: FlowDetailCandidate[] }
-  | { readonly type: 'DRAFT_LOADED'; readonly document: TDoc | null; readonly details: TDetail[]; readonly message?: string }
+  | {
+      readonly type: 'DRAFT_LOADED'
+      readonly document: TDoc | null
+      readonly details: TDetail[]
+      readonly message?: string
+      readonly rawData?: Record<string, unknown> | null
+    }
   | { readonly type: 'CREATED_BY_ID'; readonly id: number; readonly message?: string }
   | { readonly type: 'ERROR'; readonly level: 'warning' | 'error'; readonly message: string }
 
@@ -261,7 +267,13 @@ export class ScanDocumentFlow<TDoc, TDetail, TContext = unknown> {
       const message = this.pickMessage(pack)
       if (this.config.draftStrategy.mode === 'document-and-details') {
         const picked = pickDocumentAndDetails<TDoc, TDetail>(pack)
-        if (picked) return { type: 'DRAFT_LOADED', ...picked }
+        if (picked) {
+          return {
+            type: 'DRAFT_LOADED',
+            ...picked,
+            rawData: unwrapDataContainer(pack),
+          }
+        }
         return {
           type: 'ERROR',
           level: this.config.levels?.createFailed ?? 'warning',

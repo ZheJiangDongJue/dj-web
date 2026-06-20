@@ -61,7 +61,7 @@ describe('ScanDocumentFlow', () => {
         scanForCode: 'RJH-001',
         source: { sourceType: 1 as any, logTag: '[FAI]' },
       }),
-    ).resolves.toEqual({
+    ).resolves.toMatchObject({
       type: 'DRAFT_LOADED',
       document: { id: 1 },
       details: [],
@@ -170,7 +170,7 @@ describe('ScanDocumentFlow', () => {
         source: { sourceType: 1 as any, logTag: '[FAI]' },
         pickedFlowDetail: { tableName: 'ProcessAssemblyFlowDetail', id: 11 },
       }),
-    ).resolves.toEqual({ type: 'DRAFT_LOADED', document: { id: 2 }, details: [], message: 'ok' })
+    ).resolves.toMatchObject({ type: 'DRAFT_LOADED', document: { id: 2 }, details: [], message: 'ok' })
     expect(createDraft).toHaveBeenCalledWith(
       expect.objectContaining({ flowDetailTableName: 'ProcessAssemblyFlowDetail', flowDetailId: 11 }),
     )

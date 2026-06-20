@@ -566,9 +566,13 @@ export default function ClientPage({
             onChange={vm.updateBill}
             processOptions={vm.processOptions}
             badProcessOptions={vm.badProcessOptions}
+            sourceStageOptions={vm.sourceStageOptions}
             inspectorOptions={vm.inspectorOptions}
             judgeOptions={vm.judgeOptions}
             toNonNegInt={vm.toNonNegInt}
+            onSourceStageChange={(value) => { void vm.handleSourceStageChange(value) }}
+            onReworkFlowDetailChange={(field, value) => { void vm.handleReworkFlowDetailChange(field, value) }}
+            sourceStageReloadBusy={vm.sourceStageReloadBusy}
             readOnly={vm.disableDetailEdit}
           />
         </>
@@ -732,9 +736,13 @@ function HeaderSection({
   onChange,
   processOptions,
   badProcessOptions,
+  sourceStageOptions,
   inspectorOptions,
   judgeOptions,
   toNonNegInt,
+  onSourceStageChange,
+  onReworkFlowDetailChange,
+  sourceStageReloadBusy,
   readOnly,
 }: {
   entity: DefectiveReworkOrderDocument
@@ -742,9 +750,13 @@ function HeaderSection({
   onChange: (patch: Partial<DefectiveReworkOrderDocument>) => void
   processOptions: { label: string; value: string }[]
   badProcessOptions: { label: string; value: string }[]
+  sourceStageOptions: { label: string; value: string }[]
   inspectorOptions: { label: string; value: string }[]
   judgeOptions: { label: string; value: string }[]
   toNonNegInt: (v: number | '' | undefined) => number
+  onSourceStageChange: (value: string) => void
+  onReworkFlowDetailChange: (field: 'ReworkTypeofWorkid' | 'ReworkTypeofWork2id', value: string) => void
+  sourceStageReloadBusy: boolean
   readOnly: boolean
 }) {
   const view = entity as unknown as {
@@ -757,6 +769,7 @@ function HeaderSection({
     ReworkTypeofWork2id?: number
     Employeeid?: number
     CheckResult?: number
+    SourceStage?: number
     PreCmpBQty?: number
     NotPassBQty?: number
     status?: number
@@ -791,6 +804,11 @@ function HeaderSection({
 
   const reworkProcess2Id = (() => {
     const n = Number(view.ReworkTypeofWork2id)
+    return Number.isFinite(n) && n > 0 ? String(n) : ''
+  })()
+
+  const sourceStageValue = (() => {
+    const n = Number(view.SourceStage)
     return Number.isFinite(n) && n > 0 ? String(n) : ''
   })()
 
@@ -929,33 +947,34 @@ function HeaderSection({
         <Label className="text-[13px]">返工工序</Label>
         <GridSelect
           value={view.ReworkTypeofWorkid != null ? String(view.ReworkTypeofWorkid) : ''}
-          onChange={(v) =>
-            onChange({
-              ReworkTypeofWorkid: v ? Number(v) : 0,
-            } as Partial<DefectiveReworkOrderDocument>)
-          }
+          onChange={(v) => onReworkFlowDetailChange('ReworkTypeofWorkid', v)}
           options={reworkProcessOptions}
           ariaLabel="返工工序"
           style={shortInputStyle}
-          disabled={readOnly}
+          disabled={readOnly || sourceStageReloadBusy}
         />
         <Label className="text-[13px]">返工工序2</Label>
         <GridSelect
           value={view.ReworkTypeofWork2id != null ? String(view.ReworkTypeofWork2id) : ''}
-          onChange={(v) =>
-            onChange({
-              ReworkTypeofWork2id: v ? Number(v) : 0,
-            } as Partial<DefectiveReworkOrderDocument>)
-          }
+          onChange={(v) => onReworkFlowDetailChange('ReworkTypeofWork2id', v)}
           options={reworkProcess2Options}
           ariaLabel="返工工序2"
           style={shortInputStyle}
-          disabled={readOnly}
+          disabled={readOnly || sourceStageReloadBusy}
         />
       </div>
 
-      {/* 第五行：不合格数 */}      
-      <div className="grid grid-cols-[72px_1fr] items-center gap-x-2">
+      {/* 第五行：来源阶段、不合格数 */}
+      <div className="grid grid-cols-[72px_1fr_72px_1fr] items-center gap-x-2">
+        <Label className="text-[13px]">来源阶段</Label>
+        <GridSelect
+          value={sourceStageValue}
+          onChange={onSourceStageChange}
+          options={sourceStageOptions}
+          ariaLabel="来源阶段"
+          style={shortInputStyle}
+          disabled={readOnly || sourceStageReloadBusy || sourceStageOptions.length <= 0}
+        />
         <Label className="text-[13px]">不合格数</Label>
         <NumberInput
           value={view.NotPassBQty ?? 0}

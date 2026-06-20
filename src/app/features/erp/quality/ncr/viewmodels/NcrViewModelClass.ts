@@ -35,6 +35,61 @@ export type SelectOption = import('../../shared/reworkFlowDetailOptions').Select
 
 /**
  *
+ * 不合格返工单来源阶段的固定显示文案。
+ * @remarks
+ * - 数值与 ERP.Db.Enums.Check.DefectiveReworkSourceStage 保持一致；\\n
+ * - 排序与 ERPClient 一致：接收 -> 首件 -> 完工 -> 末件。\\n
+ *
+ */
+const SOURCE_STAGE_LABELS: Record<number, string> = {
+  1: '接收',
+  2: '首件',
+  3: '完工',
+  4: '末件',
+}
+
+/**
+ *
+ * 将未知输入解析为合法来源阶段值。
+ * @param value 来源阶段原始值。
+ * @returns 合法阶段值；非法时返回 null。
+ *
+ */
+function normalizeSourceStageValue(value: unknown): number | null {
+  const n = typeof value === 'number' ? value : Number(value)
+  if (!Number.isFinite(n)) return null
+  const stage = Math.trunc(n)
+  return SOURCE_STAGE_LABELS[stage] ? stage : null
+}
+
+/**
+ *
+ * 构建“来源阶段”下拉选项，保留后端返回顺序。
+ * @param availableStages 后端返回的当前来源工序可选阶段。
+ * @param currentStage 当前已选阶段。
+ * @returns GridSelect 可直接使用的选项列表。
+ *
+ */
+function buildSourceStageOptions(
+  availableStages: readonly unknown[] | undefined,
+  currentStage: number | null,
+): SelectOption[] {
+  const seen = new Set<number>()
+  const result: SelectOption[] = []
+  const pushStage = (raw: unknown) => {
+    const stage = normalizeSourceStageValue(raw)
+    if (!stage || seen.has(stage)) return
+    seen.add(stage)
+    result.push({ label: SOURCE_STAGE_LABELS[stage] ?? String(stage), value: String(stage) })
+  }
+
+  for (const stage of availableStages ?? []) pushStage(stage)
+  if (currentStage) pushStage(currentStage)
+  return result
+}
+
+/**
+ *
  * NCR “本地照片证据”图片项（与 image-loader 的 ErpImageItem 兼容）。
  * @remarks
  * - localFile/localObjectUrl 仅在 PC 浏览器选择文件时存在；Android 端通常通过 uri/path/id 等字段识别。\\n
@@ -158,6 +213,23 @@ export class NcrViewModel extends QualityDocumentBase<DefectiveReworkOrderDocume
 
   /**
    *
+   * 来源阶段下拉选项列表（接收/首件/完工/末件）。
+   * @remarks
+   * - 由后端草稿响应的 AvailableSourceStages 驱动；\\n
+   * - 当打开历史单据且缺少可选阶段时，至少保留当前 SourceStage 作为回显选项。\\n
+   *
+   */
+  public sourceStageOptions: SelectOption[] = []
+
+  /**
+   *
+   * 来源阶段切换时的重载草稿进行中标记。
+   *
+   */
+  public sourceStageReloadBusy = false
+
+  /**
+   *
    * 判定结果下拉选项列表。
    *
    */
@@ -225,6 +297,20 @@ export class NcrViewModel extends QualityDocumentBase<DefectiveReworkOrderDocume
    *
    */
   public dailyPlanPickBusy = false
+
+  /**
+   *
+   * 当前草稿对应的来源流程卡明细表名（用于切换来源阶段时重新生成草稿）。
+   *
+   */
+  private currentSourceFlowDetailTableName = ''
+
+  /**
+   *
+   * 当前草稿对应的来源流程卡明细主键（用于切换来源阶段时重新生成草稿）。
+   *
+   */
+  private currentSourceFlowDetailId: number | null = null
 
   /**
    *
@@ -458,6 +544,7 @@ export class NcrViewModel extends QualityDocumentBase<DefectiveReworkOrderDocume
     this.serverPhotoEvidence = []
     this.clearLocalPhotoEvidence()
     this.materialCode = ''
+    this.clearSourceStageContext()
     this.ensureAtLeastOneDetailRow()
   }
 
@@ -478,6 +565,7 @@ export class NcrViewModel extends QualityDocumentBase<DefectiveReworkOrderDocume
     this.serverPhotoEvidence = []
     this.clearLocalPhotoEvidence()
     this.badProcessOptions = []
+    this.clearSourceStageContext()
     this.emit()
   }
 
@@ -513,6 +601,16 @@ export class NcrViewModel extends QualityDocumentBase<DefectiveReworkOrderDocume
 
       // 草稿不落库：id 仍为空（currentId=null），但需要规范化字段名与 status 读法
       await this.enrichAfterRefresh(result.document as any, result.details as any)
+      this.applySourceStageContext({
+        type: 'DRAFT_LOADED',
+        document: result.document,
+        details: result.details,
+        checkDetails: result.checkDetails,
+        sourceStage: result.sourceStage,
+        availableSourceStages: result.availableSourceStages,
+        sourceFlowDetailId: result.sourceFlowDetailId,
+        sourceFlowDetailType: result.sourceFlowDetailType,
+      })
       await this.loadProcessOptions()
       this.currentId = null
       this.emit()
@@ -522,6 +620,374 @@ export class NcrViewModel extends QualityDocumentBase<DefectiveReworkOrderDocume
       try { toast.error(formatActionErrorMessage('生成草稿', error, '请稍后重试')) } catch { }
       return false
     }
+  }
+
+  /**
+   *
+   * 将后端返回的 NCR 草稿加载到当前页面（不落库）。
+   * @param result 扫码用例返回的草稿结果。
+   * @returns 是否加载成功。
+   *
+   */
+  private async applyDraftLoadedResult(
+    result: Extract<NcrScanExecuteResult, { type: 'DRAFT_LOADED' }>,
+    options?: {
+      /**
+       *
+       * 切换来源阶段时保留用户已经选择的返工工序。
+       *
+       */
+      readonly preserveReworkSelection?: {
+        readonly reworkTypeofWorkId?: number | null
+        readonly reworkTypeofWork2Id?: number | null
+      }
+    },
+  ): Promise<boolean> {
+    if (!result?.document) {
+      try { toast.error('已生成草稿，但返回数据异常') } catch { }
+      return false
+    }
+
+    try { this.createNewBill() } catch { }
+
+    await this.enrichAfterRefresh(result.document as any, result.details as any)
+    this.applySourceStageContext(result)
+
+    const preserve = options?.preserveReworkSelection
+    const reworkTypeofWorkId = toNumericId(preserve?.reworkTypeofWorkId)
+    const reworkTypeofWork2Id = toNumericId(preserve?.reworkTypeofWork2Id)
+    if (reworkTypeofWorkId || reworkTypeofWork2Id) {
+      this.bill = {
+        ...(this.bill as any),
+        ...(reworkTypeofWorkId ? { ReworkTypeofWorkid: reworkTypeofWorkId } : {}),
+        ...(reworkTypeofWork2Id ? { ReworkTypeofWork2id: reworkTypeofWork2Id } : {}),
+      } as DefectiveReworkOrderDocument
+    }
+
+    await this.loadProcessOptions()
+
+    this.currentId = null
+    this.serverPhotoEvidence = []
+    this.clearLocalPhotoEvidence()
+    this.emit()
+    return true
+  }
+
+  /**
+   *
+   * 清空来源阶段上下文。
+   * @remarks
+   * - 用于新建/重置，避免上一张草稿的来源流程卡明细影响下一次切换。\\n
+   *
+   */
+  private clearSourceStageContext(): void {
+    this.sourceStageOptions = []
+    this.sourceStageReloadBusy = false
+    this.currentSourceFlowDetailTableName = ''
+    this.currentSourceFlowDetailId = null
+  }
+
+  /**
+   *
+   * 从单据头回填来源阶段上下文。
+   * @remarks
+   * - 打开历史单据或检验单草稿时，可能没有 AvailableSourceStages；此时至少保留当前 SourceStage 回显。\\n
+   * @param document 单据头 DTO。
+   *
+   */
+  private applySourceStageContextFromDocument(document: any): void {
+    const sourceStage = normalizeSourceStageValue(document?.SourceStage ?? document?.sourceStage)
+    const flowDetailId = toNumericId(document?.CreateByDetailid ?? document?.createByDetailid)
+    const flowDetailTableName = pickText(document?.CreateByDetailType ?? document?.createByDetailType)
+
+    this.sourceStageOptions = buildSourceStageOptions(undefined, sourceStage)
+    this.currentSourceFlowDetailId = flowDetailId || null
+    this.currentSourceFlowDetailTableName = flowDetailTableName
+
+    if (sourceStage && document && typeof document === 'object') {
+      document.SourceStage = sourceStage
+    }
+  }
+
+  /**
+   *
+   * 从草稿响应回填来源阶段上下文。
+   * @param result 后端草稿响应映射后的应用层结果。
+   *
+   */
+  private applySourceStageContext(result: Extract<NcrScanExecuteResult, { type: 'DRAFT_LOADED' }>): void {
+    const document = result.document as any
+    const sourceStage = normalizeSourceStageValue(
+      result.sourceStage ?? document?.SourceStage ?? document?.sourceStage,
+    )
+    const flowDetailId = toNumericId(
+      result.sourceFlowDetailId ?? document?.CreateByDetailid ?? document?.createByDetailid,
+    )
+    const flowDetailTableName = pickText(
+      result.sourceFlowDetailType ?? document?.CreateByDetailType ?? document?.createByDetailType,
+    )
+
+    this.sourceStageOptions = buildSourceStageOptions(result.availableSourceStages, sourceStage)
+    this.currentSourceFlowDetailId = flowDetailId || null
+    this.currentSourceFlowDetailTableName = flowDetailTableName
+
+    if (sourceStage) {
+      this.bill = { ...(this.bill as any), SourceStage: sourceStage } as DefectiveReworkOrderDocument
+    }
+  }
+
+  /**
+   *
+   * 解析某个返工工序下拉值对应的流程卡明细表名与主键。
+   * @remarks
+   * - 下拉选项由 fetchReworkFlowDetailOptionsFromUpstreamFlowCard 写入 flowDetailTableName；\\n
+   * - 兼容历史/测试数据缺少扩展字段时，回退到当前来源上下文或单据头 CreateByDetail*。\\n
+   * @param flowDetailIdRaw 下拉值。
+   *
+   */
+  private resolveReworkFlowDetailSelection(
+    flowDetailIdRaw: unknown,
+  ): { readonly flowDetailTableName: string; readonly flowDetailId: number } | null {
+    const flowDetailIdInput =
+      typeof flowDetailIdRaw === 'number' || typeof flowDetailIdRaw === 'string' || flowDetailIdRaw == null
+        ? flowDetailIdRaw
+        : String(flowDetailIdRaw)
+    const flowDetailId = toNumericId(flowDetailIdInput)
+    if (!flowDetailId) return null
+
+    const option = (this.badProcessOptions ?? []).find((item) => String(item?.value ?? '') === String(flowDetailId))
+    const tableFromOption = pickText((option as any)?.flowDetailTableName)
+    if (tableFromOption) return { flowDetailTableName: tableFromOption, flowDetailId }
+
+    if (this.currentSourceFlowDetailId === flowDetailId && this.currentSourceFlowDetailTableName) {
+      return { flowDetailTableName: this.currentSourceFlowDetailTableName, flowDetailId }
+    }
+
+    const tableNames = Array.from(new Set(
+      (this.badProcessOptions ?? [])
+        .map((item) => pickText((item as any)?.flowDetailTableName))
+        .filter(Boolean),
+    ))
+    if (tableNames.length === 1) {
+      return { flowDetailTableName: tableNames[0], flowDetailId }
+    }
+
+    const billDetailId = toNumericId((this.bill as any)?.CreateByDetailid ?? (this.bill as any)?.createByDetailid)
+    const billDetailTableName = pickText((this.bill as any)?.CreateByDetailType ?? (this.bill as any)?.createByDetailType)
+    if (billDetailId === flowDetailId && billDetailTableName) {
+      return { flowDetailTableName: billDetailTableName, flowDetailId }
+    }
+
+    return null
+  }
+
+  /**
+   *
+   * 从当前返工工序/返工工序2 中解析一个用于来源阶段同步的流程卡明细。
+   * @param preferredFlowDetailId 当前刚变更的返工工序明细 id，优先使用。
+   *
+   */
+  private resolveAnySelectedReworkFlowDetail(
+    preferredFlowDetailId?: number | null,
+  ): { readonly flowDetailTableName: string; readonly flowDetailId: number } | null {
+    const preferred = this.resolveReworkFlowDetailSelection(preferredFlowDetailId)
+    if (preferred) return preferred
+
+    const first = this.resolveReworkFlowDetailSelection(
+      (this.bill as any)?.ReworkTypeofWorkid ?? (this.bill as any)?.reworkTypeofWorkid,
+    )
+    if (first) return first
+
+    return this.resolveReworkFlowDetailSelection(
+      (this.bill as any)?.ReworkTypeofWork2id ?? (this.bill as any)?.reworkTypeofWork2id,
+    )
+  }
+
+  /**
+   *
+   * 获取当前两个返工工序选择的快照。
+   * @returns 用于重拉草稿后恢复返工工序的快照。
+   *
+   */
+  private getReworkSelectionSnapshot(): {
+    readonly reworkTypeofWorkId: number | null
+    readonly reworkTypeofWork2Id: number | null
+  } {
+    return {
+      reworkTypeofWorkId: toNumericId((this.bill as any)?.ReworkTypeofWorkid ?? (this.bill as any)?.reworkTypeofWorkid) || null,
+      reworkTypeofWork2Id: toNumericId((this.bill as any)?.ReworkTypeofWork2id ?? (this.bill as any)?.reworkTypeofWork2id) || null,
+    }
+  }
+
+  /**
+   *
+   * 处理返工工序变更后的来源阶段同步。
+   * @remarks
+   * - 对齐 ERPClient：返工工序指向新的来源流程卡明细后，来源阶段候选必须按该明细重新计算；\\n
+   * - 若原来源阶段在新工序不可用，则自动回退到后端默认候选，避免旧阶段残留。\\n
+   * @param preferredFlowDetailId 当前刚选择的流程卡明细 id。
+   *
+   */
+  private async reloadSourceByReworkFlowDetailChange(preferredFlowDetailId: number | null): Promise<void> {
+    if (this.sourceStageReloadBusy) return
+
+    const selected = this.resolveAnySelectedReworkFlowDetail(preferredFlowDetailId)
+    if (!selected) {
+      this.currentSourceFlowDetailTableName = ''
+      this.currentSourceFlowDetailId = null
+      this.sourceStageOptions = []
+      this.bill = { ...(this.bill as any), SourceStage: 0 } as DefectiveReworkOrderDocument
+      this.emit()
+      return
+    }
+
+    this.currentSourceFlowDetailTableName = selected.flowDetailTableName
+    this.currentSourceFlowDetailId = selected.flowDetailId
+
+    const currentStage = normalizeSourceStageValue((this.bill as any)?.SourceStage ?? (this.bill as any)?.sourceStage)
+    const preserveReworkSelection = this.getReworkSelectionSnapshot()
+
+    this.sourceStageReloadBusy = true
+    this.sourceStageOptions = []
+    this.bill = { ...(this.bill as any), SourceStage: 0 } as DefectiveReworkOrderDocument
+    this.emit()
+
+    try {
+      const result = await this.runBusyAction(
+        '切换返工工序',
+        async () => {
+          const first = await this.appService.reloadDraftByFlowDetail({
+            flowDetailTableName: selected.flowDetailTableName,
+            flowDetailId: selected.flowDetailId,
+            inspectorEmployeeId: toNumericId((this.bill as any)?.Employeeid ?? (this.bill as any)?.employeeid),
+            sourceStage: currentStage ?? null,
+          })
+
+          if (first.type !== 'ERROR' || !currentStage) return first
+
+          return this.appService.reloadDraftByFlowDetail({
+            flowDetailTableName: selected.flowDetailTableName,
+            flowDetailId: selected.flowDetailId,
+            inspectorEmployeeId: toNumericId((this.bill as any)?.Employeeid ?? (this.bill as any)?.employeeid),
+            sourceStage: null,
+          })
+        },
+        { loadingMessage: '切换返工工序中…', showLoadingToast: false },
+      )
+
+      if (!result) return
+
+      if (result.type === 'DRAFT_LOADED') {
+        const loaded = await this.applyDraftLoadedResult(result, { preserveReworkSelection })
+        if (loaded) {
+          try { toast.success('已按返工工序刷新来源阶段') } catch { }
+        }
+        return
+      }
+
+      if (result.type === 'ERROR') {
+        try {
+          if (result.level === 'warning') toast.warning(result.message)
+          else toast.error(result.message)
+        } catch { }
+      }
+    } finally {
+      this.sourceStageReloadBusy = false
+      this.emit()
+    }
+  }
+
+  /**
+   *
+   * 切换来源阶段，并按当前来源流程卡明细重新生成 NCR 草稿。
+   * @remarks
+   * - 对齐 ERPClient：来源阶段变化后重拉来源单据草稿；\\n
+   * - 保留用户已选的返工工序/返工工序2，避免切换阶段覆盖返工路线选择。\\n
+   * @param value 下拉选中的阶段值。
+   *
+   */
+  public handleSourceStageChange = async (value: string): Promise<void> => {
+    if (this.disableDetailEdit || this.sourceStageReloadBusy) return
+
+    const nextStage = normalizeSourceStageValue(value)
+    if (!nextStage) return
+
+    const currentStage = normalizeSourceStageValue((this.bill as any)?.SourceStage ?? (this.bill as any)?.sourceStage)
+    if (currentStage === nextStage) {
+      this.bill = { ...(this.bill as any), SourceStage: nextStage } as DefectiveReworkOrderDocument
+      this.emit()
+      return
+    }
+
+    const flowDetailTableName = this.currentSourceFlowDetailTableName
+    const flowDetailId = this.currentSourceFlowDetailId
+    if (!flowDetailTableName || !flowDetailId) {
+      this.bill = { ...(this.bill as any), SourceStage: nextStage } as DefectiveReworkOrderDocument
+      this.emit()
+      return
+    }
+
+    const preserveReworkSelection = this.getReworkSelectionSnapshot()
+
+    this.sourceStageReloadBusy = true
+    this.bill = { ...(this.bill as any), SourceStage: nextStage } as DefectiveReworkOrderDocument
+    this.emit()
+
+    try {
+      const result = await this.runBusyAction(
+        '切换来源阶段',
+        () => this.appService.reloadDraftByFlowDetail({
+          flowDetailTableName,
+          flowDetailId,
+          inspectorEmployeeId: toNumericId((this.bill as any)?.Employeeid ?? (this.bill as any)?.employeeid),
+          sourceStage: nextStage,
+        }),
+        { loadingMessage: '切换来源阶段中…', showLoadingToast: false },
+      )
+
+      if (!result) return
+
+      if (result.type === 'DRAFT_LOADED') {
+        const loaded = await this.applyDraftLoadedResult(result, { preserveReworkSelection })
+        if (loaded) {
+          try { toast.success('已切换来源阶段并刷新草稿') } catch { }
+        }
+        return
+      }
+
+      if (result.type === 'ERROR') {
+        try {
+          if (result.level === 'warning') toast.warning(result.message)
+          else toast.error(result.message)
+        } catch { }
+        return
+      }
+
+      try { toast.error('切换来源阶段失败：未返回可处理结果') } catch { }
+    } finally {
+      this.sourceStageReloadBusy = false
+      this.emit()
+    }
+  }
+
+  /**
+   *
+   * 修改返工工序字段，并同步刷新来源阶段候选。
+   * @param field 返工工序字段名。
+   * @param value 下拉值（流程卡明细 id）。
+   *
+   */
+  public handleReworkFlowDetailChange = async (
+    field: 'ReworkTypeofWorkid' | 'ReworkTypeofWork2id',
+    value: string,
+  ): Promise<void> => {
+    if (this.disableDetailEdit) return
+
+    const nextId = toNumericId(value) || 0
+    this.bill = { ...(this.bill as any), [field]: nextId } as DefectiveReworkOrderDocument
+    this.emit()
+
+    await this.reloadSourceByReworkFlowDetailChange(nextId || null)
   }
 
   /**
@@ -1055,31 +1521,15 @@ export class NcrViewModel extends QualityDocumentBase<DefectiveReworkOrderDocume
       return result
     }
 
-    if (result.type === 'CREATED_BY_DAILY_PLAN') {
-      const currentId = this.getCurrentBillId()
-      const nextId = typeof result.id === 'number' ? result.id : Number(result.id)
-      if (Number.isFinite(nextId) && nextId > 0 && nextId !== currentId) {
-        try { this.createNewBill() } catch { }
-      }
-      const opened = await this.openById(result.id)
+    if (result.type === 'DRAFT_LOADED') {
+      const loaded = await this.applyDraftLoadedResult(result)
       if (!this.isScanListenerActive()) {
         this.redeliverScanCodeToActive(text)
         return result
       }
-      if (!opened) {
-        if (!this.isScanListenerActive()) {
-          this.redeliverScanCodeToActive(text)
-          return result
-        }
-        try { toast.error('已生成单据，但未能打开') } catch { }
-        return result
+      if (loaded) {
+        try { toast.success(result.message || '已生成不合格返工单草稿，请保存后继续处理') } catch { }
       }
-
-      if (!this.isScanListenerActive()) {
-        this.redeliverScanCodeToActive(text)
-        return result
-      }
-      try { toast.success(result.message || `已生成并打开不合格返工单：${result.id}`) } catch { }
       return result
     }
 
@@ -1176,6 +1626,7 @@ export class NcrViewModel extends QualityDocumentBase<DefectiveReworkOrderDocume
           pickedFlowDetail: {
             tableName: candidate.flowDetailTableName,
             id: candidate.flowDetailId,
+            sourceStage: candidate.sourceStage ?? null,
           },
         })
         : isJcjh
@@ -1184,6 +1635,7 @@ export class NcrViewModel extends QualityDocumentBase<DefectiveReworkOrderDocume
             pickedFlowDetail: {
               tableName: candidate.flowDetailTableName,
               id: candidate.flowDetailId,
+              sourceStage: candidate.sourceStage ?? null,
             },
           })
           : await this.appService.executeDailyPlanScanCreate(scanCode, {
@@ -1191,37 +1643,22 @@ export class NcrViewModel extends QualityDocumentBase<DefectiveReworkOrderDocume
             pickedFlowDetail: {
               tableName: candidate.flowDetailTableName,
               id: candidate.flowDetailId,
+              sourceStage: candidate.sourceStage ?? null,
             },
           })
 
-      if (result.type === 'CREATED_BY_DAILY_PLAN') {
+      if (result.type === 'DRAFT_LOADED') {
         this.pendingDailyPlanFlowDetailPick = null
         this.emit()
 
-        const currentId = this.getCurrentBillId()
-        const nextId = typeof result.id === 'number' ? result.id : Number(result.id)
-        if (Number.isFinite(nextId) && nextId > 0 && nextId !== currentId) {
-          try { this.createNewBill() } catch { }
-        }
-        const opened = await this.openById(result.id)
+        const loaded = await this.applyDraftLoadedResult(result)
         if (!this.isScanListenerActive()) {
           this.redeliverScanCodeToActive(scanCode)
           return
         }
-        if (!opened) {
-          if (!this.isScanListenerActive()) {
-            this.redeliverScanCodeToActive(scanCode)
-            return
-          }
-          try { toast.error('已生成单据，但未能打开') } catch { }
-          return
+        if (loaded) {
+          try { toast.success(result.message || '已生成不合格返工单草稿，请保存后继续处理') } catch { }
         }
-
-        if (!this.isScanListenerActive()) {
-          this.redeliverScanCodeToActive(scanCode)
-          return
-        }
-        try { toast.success(result.message || `已生成并打开不合格返工单：${result.id}`) } catch { }
         return
       }
 
@@ -1321,6 +1758,7 @@ export class NcrViewModel extends QualityDocumentBase<DefectiveReworkOrderDocume
     for (const d of normDetails) {
       this.ensureDetailLocalKey(d)
     }
+    this.applySourceStageContextFromDocument(enriched)
     this.details = normDetails as any[]
     this.emit()
     this.ensureAtLeastOneDetailRow()

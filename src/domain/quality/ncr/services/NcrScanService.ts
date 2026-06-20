@@ -58,7 +58,7 @@
  *
  * 通过“日计划条码”生成 NCR 的命令。
  * @remarks
- * - 对齐既有后端接口 `CreateDefectiveReworkOrderByDailyPlanScanCode` 的关键输入字段；\\n
+ * - 对齐后端日计划草稿接口的关键输入字段（ScanForCode/InspectorEmployeeid）；\\n
  * - 领域层不包含 dbName/user 等基础设施信息；这些由 Application 层补齐。\\n
  *
  */
@@ -119,7 +119,7 @@
  * 通过“不合格返工单条码（FGD-*）”继续生成/打开下游 NCR 的命令。
  * @remarks
  * - 上游入口为不合格返工单（FGD-*），后续逻辑需先定位其下游流程卡与当前工序明细；\\n
- * - 实际的生成/打开由 Application 层通过 FlowScanApi + CreateDefectiveReworkOrderByFlowDetail 完成。\\n
+ * - 实际的生成/打开由 Application 层通过 FlowScanApi + NCR 草稿接口完成。\\n
  *
  */
 export type CreateDefectiveReworkOrderByDefectiveReworkOrderScanCodeCommand = {
