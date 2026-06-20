@@ -90,17 +90,29 @@ export interface BillApiActions {
 
 // ========================= 工具函数 =========================
 
+interface JsonParseSuccess<T> {
+  readonly ok: true
+  readonly value: T
+}
+
+interface JsonParseFailure {
+  readonly ok: false
+}
+
+type JsonParseResult<T> = JsonParseSuccess<T> | JsonParseFailure
+
 /**
  *
- * 安全 JSON 解析，失败返回 null
+ * 安全 JSON 解析，失败返回带状态的结果对象。
+ * - 不能用解析值本身判断成功与否，因为 JSON `false`、`0`、`null`、`""` 都是合法响应体。
  * @param text 原始字符串
  *
  */
-function safeJsonParse<T>(text: string): T | null {
+function safeJsonParse<T>(text: string): JsonParseResult<T> {
   try {
-    return JSON.parse(text) as T
+    return { ok: true, value: JSON.parse(text) as T }
   } catch {
-    return null
+    return { ok: false }
   }
 }
 
@@ -250,8 +262,8 @@ export class BillApiClient {
       }
 
       // 优先尝试 JSON 解析；解析失败则按文本处理
-      const json = safeJsonParse<unknown>(raw)
-      if (!json) {
+      const parsed = safeJsonParse<unknown>(raw)
+      if (!parsed.ok) {
         if (res.ok) return raw as unknown as TRaw
         const snippet = raw.slice(0, 200).trim()
         throw toUnifiedError(
@@ -260,6 +272,7 @@ export class BillApiClient {
         )
       }
 
+      const json = parsed.value
       // 保持「原样」返回解析出的 JSON（不做信封解包）
       if (res.ok) return json as TRaw
 
@@ -328,8 +341,8 @@ export class BillApiClient {
         return null as TRes
       }
 
-      const json = safeJsonParse<unknown>(raw)
-      if (!json) {
+      const parsed = safeJsonParse<unknown>(raw)
+      if (!parsed.ok) {
         // 返回的不是 JSON
         if (res.ok) return raw as unknown as TRes
         const snippet = raw.slice(0, 200).trim()
@@ -339,6 +352,7 @@ export class BillApiClient {
         )
       }
 
+      const json = parsed.value
       // 优先尝试按照统一信封解析
       const env = json as Partial<ApiEnvelope<TRes>>
       const looksLikeEnvelope = typeof env === 'object' && env !== null && 'success' in env && 'code' in env && 'message' in env

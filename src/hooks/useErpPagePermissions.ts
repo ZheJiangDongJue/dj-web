@@ -95,7 +95,7 @@ async function loadAllowedPageNames({
   const results = await Promise.all(
     pageNames.map(async (pageName) => {
       const ok = await CheckAuthCached({ dbName, userId, pageName, auth })
-      return ok ? pageName : null
+      return ok === true ? pageName : null
     }),
   )
   return new Set(results.filter((x): x is string => typeof x === 'string' && x.trim().length > 0))

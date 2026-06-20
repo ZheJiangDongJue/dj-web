@@ -23,6 +23,25 @@ import { Permissions } from '@/types/erp-db.generated'
  */
 const _client = new BillApiClient({ controllerPath: '/api/AuthApi' })
 
+/**
+ *
+ * 将后端权限检查结果收窄为严格布尔值。
+ * - 兼容旧接口/中间层可能返回的字符串 `"true"` / `"false"`。
+ * - 其他异常形态一律按无权限处理，避免把 truthy 字符串误判为放行。
+ * @param value 后端返回的原始权限结果
+ * @returns 是否拥有指定权限
+ *
+ */
+function normalizeAuthResult(value: unknown): boolean {
+  if (typeof value === 'boolean') return value
+  if (typeof value !== 'string') return false
+
+  const text = value.trim().toLowerCase()
+  if (text === 'true') return true
+  if (text === 'false') return false
+  return false
+}
+
 export interface CheckAuthInput {
   /**
    *
@@ -67,10 +86,11 @@ export async function CheckAuth(input: CheckAuthInput): Promise<boolean> {
     return false
   }
 
-  return _client.callAction<boolean>('CheckAuth', {
+  const result = await _client.callAction<unknown>('CheckAuth', {
     method: 'GET',
     query: { dbName, userId, pageName, auth },
   })
+  return normalizeAuthResult(result)
 }
 
 const _checkAuthCache = new Map<string, Promise<boolean>>()
@@ -111,4 +131,3 @@ export function CheckAuthCached(input: CheckAuthInput): Promise<boolean> {
 export function clearCheckAuthCache(): void {
   _checkAuthCache.clear()
 }
-

@@ -74,7 +74,7 @@ export default function ErpCategoryPage() {
    * 页面入口可见性判断：
    * - 未标注 PageName：默认可见（便于逐步接入权限系统）。
    * - 权限加载完成：严格按 `Permissions.浏览` 过滤。
-   * - 权限加载失败：降级为“全部可见”，并提示用户刷新/联系管理员。
+   * - 权限加载失败：隐藏所有受控入口，并提示用户刷新/联系管理员。
    *
    */
   const canViewPageName = useMemo(() => {
@@ -117,7 +117,7 @@ export default function ErpCategoryPage() {
   const activeModuleId = visibleModules.find((m) => m.name === activeCategory)?.id ?? "";
   const functionItems = useMemo(() => {
     if (!activeModuleId) return [];
-    // 仅在权限 ready 时过滤入口；error 时降级显示全部；loading/idle 时 UI 会显示加载中
+    // 权限 ready/error 时都执行过滤：ready 使用后端结果，error 隐藏受控入口；loading/idle 时 UI 会显示加载中
     const filter = permStatus === "ready" || permStatus === "error" ? canViewPageName : undefined;
     return buildFunctionItems(activeModuleId, filter);
   }, [activeModuleId, canViewPageName, permStatus]);
