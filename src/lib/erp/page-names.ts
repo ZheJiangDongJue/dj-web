@@ -23,7 +23,7 @@ export const ERP_PAGE_NAME = {
   FAI: 'FirstInspectionDocumentEditorPage',
   /**
    *
-   * 末道检验（FQC）
+   * 末件检验（FQC）
    *
    */
   FQC: 'FinalInspectionDocumentEditorPage',

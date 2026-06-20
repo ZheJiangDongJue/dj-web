@@ -45,7 +45,7 @@ vi.mock('@/app/features/erp/quality/shared/helpers', () => ({
 vi.mock('@/types/erp-db.generated', () => {
   /**
    *
-   * 末道检验表头（测试桩）。
+   * 末件检验表头（测试桩）。
    *
    */
   class FinalInspectionDocument {
@@ -100,7 +100,7 @@ vi.mock('@/types/erp-db.generated', () => {
 
   /**
    *
-   * 末道检验明细（测试桩）。
+   * 末件检验明细（测试桩）。
    *
    */
   class FinalInspectionDetail {
@@ -565,7 +565,7 @@ describe('FinalInspectionApplicationService', () => {
 
     flowScanCheckMock.mockResolvedValueOnce({ success: true, data: { Items: [] } })
     const res = await service.executeScan('RJH-NO-DATA')
-    expect(res).toEqual({ type: 'ERROR', level: 'warning', message: '未找到可检验工序或无需末道检验' })
+    expect(res).toEqual({ type: 'ERROR', level: 'warning', message: '未找到可检验工序或无需末件检验' })
   })
 
   it('executeScan: 仅明细返回时仍提供草稿', async () => {
@@ -620,7 +620,7 @@ describe('FinalInspectionApplicationService', () => {
     const service = new FinalInspectionApplicationService(repo as any)
     flowScanCheckMock.mockResolvedValueOnce({ success: true, message: '', data: { Items: [] } })
     const res = await service.executeScan('FGD-NONE')
-    expect(res).toEqual({ type: 'ERROR', level: 'warning', message: '未找到可检验工序或无需末道检验' })
+    expect(res).toEqual({ type: 'ERROR', level: 'warning', message: '未找到可检验工序或无需末件检验' })
     expect(getAssemblyDraftMock).not.toHaveBeenCalled()
     expect(getProduceDraftMock).not.toHaveBeenCalled()
   })

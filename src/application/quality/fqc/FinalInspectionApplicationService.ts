@@ -118,7 +118,7 @@ const TABLE_NAME = 'FinalInspectionDocument' as const
 
 /**
  *
- * 末道检验应用服务（用例编排 + 事务封装）。
+ * 末件检验应用服务（用例编排 + 事务封装）。
  *
  */
 export class FinalInspectionApplicationService {
@@ -154,7 +154,7 @@ export class FinalInspectionApplicationService {
     draftStrategy: { mode: 'document-and-details' },
     messages: {
       queryFailed: '查询流程卡工序明细失败',
-      noFlowDetail: '未找到可检验工序或无需末道检验',
+      noFlowDetail: '未找到可检验工序或无需末件检验',
       createFailed: '生成草稿失败',
       scanFailed: '扫码处理失败',
       invalidCreatedId: '后端返回单据ID异常，无法打开',
@@ -195,7 +195,7 @@ export class FinalInspectionApplicationService {
         details: input.details as any,
         fallbackId: pickBillId(input.bill),
       })
-      if (!aggregate) return { id: null, aggregate: null, message: '无法解析末道检验数据' }
+      if (!aggregate) return { id: null, aggregate: null, message: '无法解析末件检验数据' }
 
       const saved = await this.repository.save(aggregate)
       return { id: saved.id, aggregate: saved }
@@ -275,7 +275,7 @@ export class FinalInspectionApplicationService {
     const pickProduce = pickDocumentAndDetails<FinalInspectionDocument, FinalInspectionDetail>(packProduce)
     const picked = pickAssembly ?? pickProduce
     if (!picked) {
-      return { type: 'ERROR', level: 'warning', message: '未找到可检验工序或无需末道检验' }
+      return { type: 'ERROR', level: 'warning', message: '未找到可检验工序或无需末件检验' }
     }
     return { type: 'DRAFT_LOADED', ...picked }
   }
@@ -382,7 +382,7 @@ export class FinalInspectionApplicationService {
     r: ScanDocumentFlowResult<FinalInspectionDocument, FinalInspectionDetail>,
   ): FinalInspectionScanResult {
     if (r.type === 'CREATED_BY_ID') {
-      return { type: 'ERROR', level: 'error', message: '末道检验不应返回 CREATED_BY_ID' }
+      return { type: 'ERROR', level: 'error', message: '末件检验不应返回 CREATED_BY_ID' }
     }
     return r
   }

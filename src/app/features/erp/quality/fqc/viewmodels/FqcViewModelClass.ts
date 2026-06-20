@@ -131,7 +131,7 @@ export class FqcViewModel extends QualityDocumentBase<FinalInspectionDocument, F
   public processName = ''
   /**
    *
-   * 末道检验应用服务。
+   * 末件检验应用服务。
    *
    */
   private readonly appService: FinalInspectionApplicationService
@@ -169,7 +169,7 @@ export class FqcViewModel extends QualityDocumentBase<FinalInspectionDocument, F
   /**
    *
    * 构造函数。
-   * @param appService 末道检验应用服务实例。
+   * @param appService 末件检验应用服务实例。
    *
    */
   constructor(appService: FinalInspectionApplicationService) {
@@ -331,7 +331,7 @@ export class FqcViewModel extends QualityDocumentBase<FinalInspectionDocument, F
     this.debugMenu = [
       { id: 'moni', label: '模拟扫码', onClick: () => { try { const mock = this.buildMockScanState(); this.replaceState(mock as any) } catch (err) { /* istanbul ignore next: 防御性日志 */ console.error('[FQC] 模拟扫码失败:', err) } } },
       { id: 'scan-input', label: '输入条码/单据ID', onClick: async () => { await this.openInputAndScan() } },
-      { id: 'scan-open', label: '相机扫码打开末道检验', onClick: async () => { try { await scanQRCode() } catch (err) { /* istanbul ignore next: 防御性日志 */ console.error('[FQC] 触发相机扫码失败:', err) } } },
+      { id: 'scan-open', label: '相机扫码打开末件检验', onClick: async () => { try { await scanQRCode() } catch (err) { /* istanbul ignore next: 防御性日志 */ console.error('[FQC] 触发相机扫码失败:', err) } } },
     ]
 
     // 首次创建默认“新建”
@@ -956,8 +956,8 @@ export class FqcViewModel extends QualityDocumentBase<FinalInspectionDocument, F
 
   /**
    *
-   * 创建一个带默认值的末道检验单据对象。
-   * @returns 初始化后的末道检验单据
+   * 创建一个带默认值的末件检验单据对象。
+   * @returns 初始化后的末件检验单据
    *
    */
   private createEmptyFinalInspectionDocument(): FinalInspectionDocument {
@@ -968,7 +968,7 @@ export class FqcViewModel extends QualityDocumentBase<FinalInspectionDocument, F
 
   /**
    *
-   * 构造“模拟扫码”用的末道检验草稿状态（仅用于 Debug 菜单演示）。
+   * 构造“模拟扫码”用的末件检验草稿状态（仅用于 Debug 菜单演示）。
    * @returns 可用于 replaceState 的局部状态
    *
    */
@@ -1016,7 +1016,7 @@ export class FqcViewModel extends QualityDocumentBase<FinalInspectionDocument, F
     d1.UpQValue = '5.1'
 
     const details = [d0, d1]
-    const billForView: any = { ...docAny, process: '末道检验' }
+    const billForView: any = { ...docAny, process: '末件检验' }
 
     return { bill: billForView as FinalInspectionDocument, details: details as any, rawDocument: docAny }
   }
@@ -1103,7 +1103,7 @@ export class FqcViewModel extends QualityDocumentBase<FinalInspectionDocument, F
 
   /**
    *
-   * 确认选择某条流程卡明细，并生成/打开末道检验草稿。
+   * 确认选择某条流程卡明细，并生成/打开末件检验草稿。
    * @param candidate 用户选中的候选项。
    *
    */
@@ -1187,7 +1187,7 @@ export class FqcViewModel extends QualityDocumentBase<FinalInspectionDocument, F
 
   /**
    *
-   * 将末道检验草稿写入 VM，并根据是否存在单据ID进行刷新与默认提示。
+   * 将末件检验草稿写入 VM，并根据是否存在单据ID进行刷新与默认提示。
    * @param doc 表头（可为 null）
    * @param details 明细列表
    * @param msg 若后端未提供 msg，则使用默认成功提示
@@ -1234,13 +1234,13 @@ export class FqcViewModel extends QualityDocumentBase<FinalInspectionDocument, F
         this.redeliverScanCodeToActive(scanCode)
         return
       }
-      try { toast.success(notice || '已打开/生成末道检验单据') } catch { }
+      try { toast.success(notice || '已打开/生成末件检验单据') } catch { }
     } else {
       if (scanCode && !this.isScanListenerActive()) {
         this.redeliverScanCodeToActive(scanCode)
         return
       }
-      try { toast.success(notice || '已载入末道检验数据') } catch { }
+      try { toast.success(notice || '已载入末件检验数据') } catch { }
     }
   }
 
@@ -1322,7 +1322,7 @@ export class FqcViewModel extends QualityDocumentBase<FinalInspectionDocument, F
 
   /**
    *
-   * 通过日计划明细 ID 生成/打开末道检验草稿。
+   * 通过日计划明细 ID 生成/打开末件检验草稿。
    * @param dailyPlanDetailId 日计划明细主键。
    *
    */
@@ -1334,7 +1334,7 @@ export class FqcViewModel extends QualityDocumentBase<FinalInspectionDocument, F
 
   /**
    *
-   * 通过日计划明细 CodeForScan（如 RJH-...）生成/打开末道检验草稿。
+   * 通过日计划明细 CodeForScan（如 RJH-...）生成/打开末件检验草稿。
    * @param codeForScan 日计划明细扫码编码。
    *
    */
@@ -1348,7 +1348,7 @@ export class FqcViewModel extends QualityDocumentBase<FinalInspectionDocument, F
 
   /**
    *
-   * 通过不合格返工单生成/打开末道检验草稿。
+   * 通过不合格返工单生成/打开末件检验草稿。
    * @param payload 支持按返工单ID或 CodeForScan 触发。
    *
    */

@@ -38,7 +38,7 @@ describe("ErpCategoryPage 权限过滤", () => {
     render(<ErpCategoryPage />);
 
     expect(screen.getByRole("button", { name: "品质系统" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "末道检验" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "末件检验" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "首件检验" })).toBeNull();
     expect(screen.queryByRole("button", { name: "不合格纪录单" })).toBeNull();
   });
@@ -56,7 +56,7 @@ describe("ErpCategoryPage 权限过滤", () => {
     expect(screen.getByText("暂无功能项")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "品质系统" })).toBeNull();
     expect(screen.queryByRole("button", { name: "首件检验" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "末道检验" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "末件检验" })).toBeNull();
     expect(screen.queryByRole("button", { name: "不合格纪录单" })).toBeNull();
   });
 
@@ -72,7 +72,7 @@ describe("ErpCategoryPage 权限过滤", () => {
     expect(screen.getByText("权限加载失败")).toBeTruthy();
     expect(screen.getByText(/已隐藏受控入口/)).toBeTruthy();
     expect(screen.queryByRole("button", { name: "首件检验" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "末道检验" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "末件检验" })).toBeNull();
     expect(screen.queryByRole("button", { name: "不合格纪录单" })).toBeNull();
   });
 });

@@ -151,7 +151,7 @@ export function CreateFirstInspectionByProduceFlowDetail<TDoc = unknown, TDetail
 
 /**
  *
- * 组装流程卡：生成末道检验草稿
+ * 组装流程卡：生成末件检验草稿
  *
  */
 export function CreateFinalInspectionByAssemblyFlowDetail<TDoc = unknown, TDetail = unknown>(
@@ -170,7 +170,7 @@ export function CreateFinalInspectionByAssemblyFlowDetail<TDoc = unknown, TDetai
 
 /**
  *
- * 生产流程卡：生成末道检验草稿
+ * 生产流程卡：生成末件检验草稿
  *
  */
 export function CreateFinalInspectionByProduceFlowDetail<TDoc = unknown, TDetail = unknown>(

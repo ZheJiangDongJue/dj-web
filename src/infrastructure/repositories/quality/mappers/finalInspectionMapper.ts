@@ -10,7 +10,7 @@ import { MeasureRecords } from '@/domain/quality/fqc/value-objects/MeasureRecord
 
 /**
  *
- * 末道检验加载模型。
+ * 末件检验加载模型。
  *
  */
 export type FinalInspectionLoadModel = {
@@ -36,7 +36,7 @@ export type FinalInspectionLoadModel = {
 
 /**
  *
- * 末道检验持久化模型。
+ * 末件检验持久化模型。
  *
  */
 export type FinalInspectionPersistenceModel = {
@@ -56,7 +56,7 @@ export type FinalInspectionPersistenceModel = {
 
 /**
  *
- * 末道检验 Mapper：领域模型 ↔ ERP.Db 镜像模型。
+ * 末件检验 Mapper：领域模型 ↔ ERP.Db 镜像模型。
  *
  */
  export class FinalInspectionMapper {

@@ -5,14 +5,14 @@ import { FinalInspectionDetail } from './FinalInspectionDetail'
 
 /**
  *
- * 末道检验单据标识。
+ * 末件检验单据标识。
  *
  */
  export type FinalInspectionId = number
 
 /**
  *
- * 末道检验聚合根属性集。
+ * 末件检验聚合根属性集。
  *
  */
  export type FinalInspectionProps = {
@@ -154,7 +154,7 @@ import { FinalInspectionDetail } from './FinalInspectionDetail'
 
 /**
  *
- * 末道检验聚合根。
+ * 末件检验聚合根。
  *
  */
  export class FinalInspection extends Entity<FinalInspectionId> {

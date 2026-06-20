@@ -62,7 +62,7 @@ function createMockAppService(overrides: Partial<FinalInspectionApplicationServi
     createDraftByDailyPlanDetailId: vi.fn<Promise<FinalInspectionScanResult>, any[]>(async () => ({
       type: 'ERROR',
       level: 'warning',
-      message: '未找到可检验工序或无需末道检验',
+      message: '未找到可检验工序或无需末件检验',
     })),
   }
   return Object.assign(base, overrides) as unknown as FinalInspectionApplicationService

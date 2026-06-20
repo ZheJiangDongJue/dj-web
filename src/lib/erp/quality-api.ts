@@ -137,7 +137,7 @@ function hasDocumentOrDetails(pack: unknown): boolean {
 
 /**
  *
- * 通过“不合格返工单”获取或生成末道检验草稿（单据头+明细）。
+ * 通过“不合格返工单”获取或生成末件检验草稿（单据头+明细）。
  * 对应 C#: [HttpPost] GetFinalInspectionDraftByDefectiveReworkOrder([FromBody] DefectiveReworkOrderFinalInspectionDraftRequest request)
  *
  */
@@ -360,7 +360,7 @@ type DefectiveReworkOrderDraft<TDoc, TDetail, TCheckDetail> =
 
 /**
  *
- * 扫码（按日计划明细 CodeForScan）→ 组装流程卡末道检验草稿。
+ * 扫码（按日计划明细 CodeForScan）→ 组装流程卡末件检验草稿。
  * - 通过本地 /api/general/get-items-ex 先定位日计划明细 id，再调用后端 ProduceFlowApi 的日计划入口。
  *
  */
@@ -404,7 +404,7 @@ export async function GetAssemblyFlowWithFirstInspectionByDailyPlanScanCode<TDoc
 
 /**
  *
- * 扫码（优先按生产流程卡明细 CodeForScan）→ 生产流程卡末道检验草稿。
+ * 扫码（优先按生产流程卡明细 CodeForScan）→ 生产流程卡末件检验草稿。
  * - 当前仅做“明细条码 → 草稿”的直达；若条码不是流程卡明细条码则返回 null 交由调用方继续兜底。
  *
  */
@@ -436,7 +436,7 @@ export async function GetProduceFlowWithFirstInspectionByExtrusionPlanScanCode<T
 
 /**
  *
- * 按末道检验单 id 查询下游“不合格返工单”id 列表。
+ * 按末件检验单 id 查询下游“不合格返工单”id 列表。
  * - 现阶段通过通用联查从 DefectiveReworkOrderDocument 侧反查 CreateByDocumentid。
  *
  */
@@ -511,7 +511,7 @@ export async function CreateFirstInspectionByDailyPlanProduce<TDoc = unknown, TD
 
 /**
  *
- * 日计划 → 组装流程卡末道检验草稿。
+ * 日计划 → 组装流程卡末件检验草稿。
  * 对应 C#: [HttpPost] CreateFinalInspectionByDailyPlanAssembly([FromBody] DailyPlanInspectionRequest request)
  *
  */
@@ -531,7 +531,7 @@ export async function CreateFinalInspectionByDailyPlanAssembly<TDoc = unknown, T
 
 /**
  *
- * 日计划 → 生产流程卡末道检验草稿。
+ * 日计划 → 生产流程卡末件检验草稿。
  * 对应 C#: [HttpPost] CreateFinalInspectionByDailyPlanProduce([FromBody] DailyPlanInspectionRequest request)
  *
  */

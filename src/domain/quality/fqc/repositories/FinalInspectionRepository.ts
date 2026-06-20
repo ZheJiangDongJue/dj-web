@@ -28,7 +28,7 @@ export type { FinalInspectionDetail } from '../entities/FinalInspectionDetail'
 
 /**
  *
- * 末道检验查询条件。
+ * 末件检验查询条件。
  *
  */
  export interface FinalInspectionFindConditions {
@@ -80,14 +80,14 @@ export type { FinalInspectionDetail } from '../entities/FinalInspectionDetail'
 
 /**
  *
- * 末道检验仓储接口（领域层）。
+ * 末件检验仓储接口（领域层）。
  *
  */
  export interface FinalInspectionRepository {
 
 /**
  *
- * 按 Id 获取末道检验（含明细）。
+ * 按 Id 获取末件检验（含明细）。
  * @param id 单据主键。
  * @returns 聚合根或 null。
  *
@@ -96,7 +96,7 @@ export type { FinalInspectionDetail } from '../entities/FinalInspectionDetail'
 
   /**
    *
-   * 按条件查询末道检验列表。
+   * 按条件查询末件检验列表。
    * @param conditions 查询条件。
    * @returns 聚合根列表。
    *
@@ -105,7 +105,7 @@ export type { FinalInspectionDetail } from '../entities/FinalInspectionDetail'
 
   /**
    *
-   * 保存末道检验（新增/修改）。
+   * 保存末件检验（新增/修改）。
    * @param entity 聚合对象。
    * @returns 保存后的聚合对象。
    *
@@ -114,7 +114,7 @@ export type { FinalInspectionDetail } from '../entities/FinalInspectionDetail'
 
   /**
    *
-   * 删除末道检验。
+   * 删除末件检验。
    * @param id 单据主键。
    * @returns 操作结果。
    *

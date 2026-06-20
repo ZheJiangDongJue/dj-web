@@ -10,7 +10,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
  * - 显示“不合格”说明与下一步操作，引导用户进入 NCR 页面。
  * - 默认启用“静默倒计时”，倒计时结束自动选择“进入填写”。
  * 查询参数（全部可选，仅用于显示/跳转增强，不影响功能）：
- * - docNo:     当前末道检验单据编号
+ * - docNo:     当前末件检验单据编号
  * - material:  物料编码
  * - orderNo:   制令单号/工单号
  * - process:   检验工序
@@ -103,7 +103,7 @@ export default function ClientPage({
 
   /**
    *
-   * 返回末道检验页面并携带反审批动作（action=unapprove）与单据ID（billId）。
+   * 返回末件检验页面并携带反审批动作（action=unapprove）与单据ID（billId）。
    * - 优先从当前URL读取 billId 并透传，避免依赖 localStorage 可能失效的问题。
    *
    */
@@ -206,7 +206,7 @@ export default function ClientPage({
             </button>
             <button
               type="button"
-              aria-label="返回末道检验（反审批）"
+              aria-label="返回末件检验（反审批）"
               onClick={goBackFqc}
               className={`${styles.btnSize} rounded-[var(--radius-md)] border border-neutral-300 text-sm text-neutral-700 hover:bg-neutral-50 active:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800/60 dark:active:bg-neutral-800`}
             >

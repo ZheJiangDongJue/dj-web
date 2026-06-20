@@ -5,14 +5,14 @@ import { MeasureRecords } from '../value-objects/MeasureRecords'
 
 /**
  *
- * 末道检验明细标识。
+ * 末件检验明细标识。
  *
  */
  export type FinalInspectionDetailId = number
 
 /**
  *
- * 末道检验明细属性集。
+ * 末件检验明细属性集。
  *
  */
  export type FinalInspectionDetailProps = {
@@ -100,7 +100,7 @@ import { MeasureRecords } from '../value-objects/MeasureRecords'
 
 /**
  *
- * 末道检验明细实体。
+ * 末件检验明细实体。
  *
  */
  export class FinalInspectionDetail extends Entity<FinalInspectionDetailId> {

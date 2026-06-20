@@ -64,13 +64,13 @@ function parseBillIdFromQuery(v: string | null | undefined): number | null {
 
 /**
  *
- * 末道检验（客户端）View
+ * 末件检验（客户端）View
  * - 仅负责渲染与绑定，所有流程/服务逻辑下沉至 ViewModel(useFqcViewModel)
- * @param initialScanCode 可选的 URL 透传参数：用于自动打开“日计划明细 → 末道检验草稿”
+ * @param initialScanCode 可选的 URL 透传参数：用于自动打开“日计划明细 → 末件检验草稿”
  *
  */
 export default function ClientPage({ initialScanCode }: { initialScanCode?: string | null }) {
-  useFeaturesPageTitle('末道检验')
+  useFeaturesPageTitle('末件检验')
   const ROW_GAP_PX = 2 as const
   return <FqcBody rowGap={ROW_GAP_PX} initialScanCode={initialScanCode} />
 }
@@ -107,9 +107,9 @@ function FqcBody({ rowGap, initialScanCode }: { rowGap: number; initialScanCode?
   // 当前检验工序由单据字段 TypeofWorkid 控制，不再在 View 层推导选中项
 
   // 支持 URL 参数自动打开：
-  // 1) ?id=Number：直接打开末道检验单据
+  // 1) ?id=Number：直接打开末件检验单据
   //    ?billId=Number：兼容中间页透传的单据ID（避免回跳后出现空单据）
-  // 2) ?scancode=RJH-...：按日计划明细条码生成/打开末道检验草稿（避免与扫码入口重复逻辑）
+  // 2) ?scancode=RJH-...：按日计划明细条码生成/打开末件检验草稿（避免与扫码入口重复逻辑）
   useEffect(() => {
     // 反审批回跳由专用 effect 处理：避免与常规“自动打开”发生竞态/重复请求
     const action = String(queryAction ?? '').trim().toLowerCase()
@@ -206,7 +206,7 @@ function FqcBody({ rowGap, initialScanCode }: { rowGap: number; initialScanCode?
       <FlowDetailPickDialog
         open={!!vm.pendingDailyPlanFlowDetailPick}
         title="请选择工序明细"
-        description="检测到多条“当前工序明细”，请选择要生成末道检验的工种"
+        description="检测到多条“当前工序明细”，请选择要生成末件检验的工种"
         candidates={vm.pendingDailyPlanFlowDetailPick?.candidates ?? []}
         busy={vm.dailyPlanPickBusy}
         resolveWorkTypeLabel={workTypeLabelById}
@@ -281,7 +281,7 @@ function FqcBody({ rowGap, initialScanCode }: { rowGap: number; initialScanCode?
 
 /**
  *
- * 末道检验明细区（性能敏感）。
+ * 末件检验明细区（性能敏感）。
  * - 表头“边输边联动”会频繁触发 VM emit；此处通过 memo 避免明细列表在“仅表头变更”时重复渲染。
  * - 仅当 details 引用变化或可编辑状态变化时才重渲染。
  *

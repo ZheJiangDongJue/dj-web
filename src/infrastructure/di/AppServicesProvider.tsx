@@ -81,7 +81,7 @@ export const DefectiveReworkOrderRepositoryToken =
 
 /**
  *
- * 末道检验仓储 Token。
+ * 末件检验仓储 Token。
  *
  */
 export const FinalInspectionRepositoryToken =
@@ -113,7 +113,7 @@ export const FirstInspectionApplicationServiceToken =
 
 /**
  *
- * 末道检验应用服务 Token。
+ * 末件检验应用服务 Token。
  *
  */
 export const FinalInspectionApplicationServiceToken =

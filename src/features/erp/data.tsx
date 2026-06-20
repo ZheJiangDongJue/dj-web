@@ -86,7 +86,7 @@ export const erpGroupsByModule: Record<string, ErpGroup[]> = {
       name: "质量管理",
       features: [
         { id: "fai", name: "首件检验", pageName: ERP_PAGE_NAME.FAI, icon: TileIcon },
-        { id: "fqc", name: "末道检验", pageName: ERP_PAGE_NAME.FQC, icon: TileIcon },
+        { id: "fqc", name: "末件检验", pageName: ERP_PAGE_NAME.FQC, icon: TileIcon },
         { id: "ncr", name: "不合格纪录单", pageName: ERP_PAGE_NAME.NCR, icon: TileIcon },
       ],
     },

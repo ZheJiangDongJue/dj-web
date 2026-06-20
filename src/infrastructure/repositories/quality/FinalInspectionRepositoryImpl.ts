@@ -16,14 +16,14 @@ const TABLE_NAME = 'FinalInspectionDocument'
 
 /**
  *
- * 末道检验仓储（基础设施实现）。
+ * 末件检验仓储（基础设施实现）。
  *
  */
  export class FinalInspectionRepositoryImpl implements FinalInspectionRepository {
 
 /**
  *
- * 按 Id 获取末道检验。
+ * 按 Id 获取末件检验。
  * @param id 单据主键。
  * @returns 聚合根或 null。
  *
@@ -52,7 +52,7 @@ const TABLE_NAME = 'FinalInspectionDocument'
 
   /**
    *
-   * 按条件查询末道检验列表。
+   * 按条件查询末件检验列表。
    * @param conditions 查询条件。
    * @returns 聚合根列表。
    *
@@ -90,7 +90,7 @@ const TABLE_NAME = 'FinalInspectionDocument'
 
   /**
    *
-   * 保存末道检验（新增/修改）。
+   * 保存末件检验（新增/修改）。
    * @param entity 聚合根。
    * @returns 保存后的聚合根。
    *
@@ -113,7 +113,7 @@ const TABLE_NAME = 'FinalInspectionDocument'
 
   /**
    *
-   * 删除末道检验。
+   * 删除末件检验。
    * @param id 单据主键。
    * @returns 操作结果。
    *

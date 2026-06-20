@@ -11,8 +11,8 @@ export const pageName = ERP_PAGE_NAME.FQC
 
 /**
  *
- * 末道检验页面（FQC）- 服务端组件
- * - 支持通过 URL 参数 scancode 自动打开末道检验草稿
+ * 末件检验页面（FQC）- 服务端组件
+ * - 支持通过 URL 参数 scancode 自动打开末件检验草稿
  * - 保持服务端入口，便于后续扩展 SSR/数据拉取；当前仅将参数透传给客户端组件处理
  *
  */

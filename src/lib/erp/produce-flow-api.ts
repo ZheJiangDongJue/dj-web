@@ -75,11 +75,11 @@ export function CreateFirstInspectionByDailyPlanProduce<TDoc = unknown, TDetail 
   } as ActionCallOptions)
 }
 
-// =============== 日计划 → 末道检验 ===============
+// =============== 日计划 → 末件检验 ===============
 
 /**
  *
- * 日计划 → 组装流程卡末道检验草稿
+ * 日计划 → 组装流程卡末件检验草稿
  *
  */
 export function CreateFinalInspectionByDailyPlanAssembly<TDoc = unknown, TDetail = unknown>(
@@ -98,7 +98,7 @@ export function CreateFinalInspectionByDailyPlanAssembly<TDoc = unknown, TDetail
 
 /**
  *
- * 日计划 → 生产流程卡末道检验草稿
+ * 日计划 → 生产流程卡末件检验草稿
  *
  */
 export function CreateFinalInspectionByDailyPlanProduce<TDoc = unknown, TDetail = unknown>(

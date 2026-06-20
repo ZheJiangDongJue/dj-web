@@ -2,7 +2,7 @@ import { ValueObject } from '@/domain/shared/value-object'
 
 /**
  *
- * 末道检验的判定结果值对象。
+ * 末件检验的判定结果值对象。
  * @remarks
  * - 内部仅存储数值型判定值，保持与 ERP.CheckResult 一致；
  * - 通过静态工厂方法统一做数据归一化，避免出现 NaN 或负数。
