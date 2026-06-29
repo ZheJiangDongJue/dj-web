@@ -132,14 +132,6 @@ export enum CheckResult {
   不合格  = 4,
 }
 
-// 来自: ../ERP_csharp/ERP.Db/Enums/Check/DefectiveReworkSourceStage.cs
-export enum DefectiveReworkSourceStage {
-  接收  = 1,
-  首件  = 2,
-  完工  = 3,
-  末件  = 4,
-}
-
 // 来自: ../ERP_csharp/ERP.Db/Enums/ClientSpecialNeeds.cs
 export enum ClientSpecialNeeds {
   需装箱_追溯  = 1,
@@ -7420,7 +7412,6 @@ export class DefectiveReworkOrderDocument extends DocumentBase implements IInner
   TypeofWorkid!: number;
   ReworkTypeofWorkid!: number;
   ReworkTypeofWork2id!: number;
-  SourceStage!: DefectiveReworkSourceStage;
   InspectionRequiredStatus!: boolean;
   BringProcessStatus!: boolean;
   /**
@@ -7477,9 +7468,6 @@ export class DefectiveReworkOrderDocument extends DocumentBase implements IInner
     }
     if (this.ReworkTypeofWork2id === undefined || this.ReworkTypeofWork2id === null) {
       this.ReworkTypeofWork2id = 0;
-    }
-    if (this.SourceStage === undefined || this.SourceStage === null) {
-      this.SourceStage = 0 as DefectiveReworkSourceStage;
     }
     if (this.InspectionRequiredStatus === undefined || this.InspectionRequiredStatus === null) {
       this.InspectionRequiredStatus = false;

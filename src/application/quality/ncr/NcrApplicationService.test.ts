@@ -37,8 +37,6 @@ function ncrDraftPack(
     readonly message?: string
     readonly details?: readonly Record<string, unknown>[]
     readonly checkDetails?: readonly Record<string, unknown>[]
-    readonly sourceStage?: number
-    readonly availableSourceStages?: readonly number[]
     readonly sourceFlowDetailId?: number
     readonly sourceFlowDetailType?: string
   },
@@ -50,8 +48,6 @@ function ncrDraftPack(
       Document: document,
       Details: [...(options?.details ?? [])],
       CheckDetails: [...(options?.checkDetails ?? [])],
-      SourceStage: options?.sourceStage,
-      AvailableSourceStages: options?.availableSourceStages ? [...options.availableSourceStages] : undefined,
       SourceFlowDetailId: options?.sourceFlowDetailId,
       SourceFlowDetailType: options?.sourceFlowDetailType,
     },
@@ -979,8 +975,6 @@ describe('NcrApplicationService', () => {
           message: 'm',
           details: [{ id: 0, Qty: 1 }],
           checkDetails: [{ id: 0, CheckResult: 2 }],
-          sourceStage: 2,
-          availableSourceStages: [1, 2, 3, 4],
           sourceFlowDetailId: 11,
           sourceFlowDetailType: 'ProcessAssemblyFlowDetail',
         },
@@ -1043,8 +1037,6 @@ describe('NcrApplicationService', () => {
       document: { id: 0, Code: 'DRAFT-1' },
       details: [{ id: 0, Qty: 1 }],
       checkDetails: [{ id: 0, CheckResult: 2 }],
-      sourceStage: 2,
-      availableSourceStages: [1, 2, 3, 4],
       sourceFlowDetailId: 11,
       sourceFlowDetailType: 'ProcessAssemblyFlowDetail',
       message: 'm',
@@ -1092,8 +1084,6 @@ describe('NcrApplicationService', () => {
       document: { id: 0, Code: 'FGD-DRAFT' },
       details: [],
       checkDetails: [],
-      sourceStage: undefined,
-      availableSourceStages: undefined,
       message: 'm',
     })
     expect(createMock).toHaveBeenCalledWith(
@@ -1124,8 +1114,6 @@ describe('NcrApplicationService', () => {
       document: { id: 0, Code: 'JCJH-DRAFT' },
       details: [],
       checkDetails: [],
-      sourceStage: undefined,
-      availableSourceStages: undefined,
       message: 'm',
     })
     expect(flowScanMock).toHaveBeenCalledWith(expect.objectContaining({ sourceType: 2 }))
@@ -1181,8 +1169,6 @@ describe('NcrApplicationService', () => {
       document: { id: 0, Code: 'RJH-DRAFT' },
       details: [],
       checkDetails: [],
-      sourceStage: undefined,
-      availableSourceStages: undefined,
       message: 'draft',
     })
     expect(flowScanMock).not.toHaveBeenCalled()
@@ -1243,8 +1229,6 @@ describe('NcrApplicationService', () => {
       document: { id: 0, Code: 'NEW-DRAFT' },
       details: [],
       checkDetails: [],
-      sourceStage: undefined,
-      availableSourceStages: undefined,
       message: undefined,
     })
     expect(flowScanMock).not.toHaveBeenCalled()
@@ -1261,7 +1245,7 @@ describe('NcrApplicationService', () => {
     await expect(
       service.executeDailyPlanScanCreate('RJH-001', {
         inspectorEmployeeId: 3,
-        pickedFlowDetail: { tableName: 'ProcessAssemblyFlowDetail', id: 11, sourceStage: 3 },
+        pickedFlowDetail: { tableName: 'ProcessAssemblyFlowDetail', id: 11 },
       }),
     ).resolves.toMatchObject({
       type: 'DRAFT_LOADED',
@@ -1275,21 +1259,18 @@ describe('NcrApplicationService', () => {
         inspectorEmployeeid: 3,
         flowDetailTableName: 'ProcessAssemblyFlowDetail',
         flowDetailId: 11,
-        sourceStage: 3,
       }),
     )
   })
 
-  it('reloadDraftByFlowDetail: 按来源流程卡明细和来源阶段重拉 NCR 草稿', async () => {
+  it('reloadDraftByFlowDetail: 按来源流程卡明细重拉 NCR 草稿', async () => {
     const { QualityApi } = await import('@/lib/erp/quality-api')
     const { NcrApplicationService } = await import('./NcrApplicationService')
 
     const createMock = QualityApi.GetDefectiveReworkOrderDraftByFlowDetail as unknown as Mock
     createMock.mockResolvedValueOnce(ncrDraftPack(
-      { id: 0, Code: 'STAGE-DRAFT', SourceStage: 4 },
+      { id: 0, Code: 'FLOW-DRAFT' },
       {
-        sourceStage: 4,
-        availableSourceStages: [1, 2, 3, 4],
         sourceFlowDetailId: 11,
         sourceFlowDetailType: 'ProcessAssemblyFlowDetail',
       },
@@ -1301,15 +1282,12 @@ describe('NcrApplicationService', () => {
         flowDetailTableName: 'ProcessAssemblyFlowDetail',
         flowDetailId: 11,
         inspectorEmployeeId: 3,
-        sourceStage: 4,
       }),
     ).resolves.toMatchObject({
       type: 'DRAFT_LOADED',
-      document: { id: 0, Code: 'STAGE-DRAFT', SourceStage: 4 },
-      sourceStage: 4,
+      document: { id: 0, Code: 'FLOW-DRAFT' },
       sourceFlowDetailId: 11,
       sourceFlowDetailType: 'ProcessAssemblyFlowDetail',
-      availableSourceStages: [1, 2, 3, 4],
     })
 
     expect(createMock).toHaveBeenCalledWith(
@@ -1317,7 +1295,6 @@ describe('NcrApplicationService', () => {
         flowDetailTableName: 'ProcessAssemblyFlowDetail',
         flowDetailId: 11,
         inspectorEmployeeid: 3,
-        sourceStage: 4,
       }),
     )
   })
@@ -1365,8 +1342,6 @@ describe('NcrApplicationService', () => {
       document: { id: 0, Code: 'NO-MESSAGE' },
       details: [],
       checkDetails: [],
-      sourceStage: undefined,
-      availableSourceStages: undefined,
       message: undefined,
     })
   })
@@ -1451,8 +1426,6 @@ describe('NcrApplicationService', () => {
       document: { id: 0, Code: 'AFTER-LATEST' },
       details: [],
       checkDetails: [],
-      sourceStage: undefined,
-      availableSourceStages: undefined,
       message: undefined,
     })
   })

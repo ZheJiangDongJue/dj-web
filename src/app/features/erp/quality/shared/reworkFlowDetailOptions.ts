@@ -8,7 +8,7 @@ import { fetchLookup } from '@/lib/erp/lookup-core'
 export type SelectOption = {
   label: string
   value: string
-  /** 流程卡明细表名，仅返工工序候选需要，用于来源阶段随工序切换。 */
+  /** 流程卡明细表名，仅返工工序候选需要，用于返工工序切换后刷新来源草稿。 */
   flowDetailTableName?: ReworkFlowDetailTableName
 }
 

@@ -51,8 +51,6 @@ export interface CreateDefectiveReworkOrderByDailyPlanScanCodeInput {
   flowDetailTableName?: string
   /** 可选：指定流程卡明细主键（与 flowDetailTableName 配套） */
   flowDetailId?: number
-  /** 可选：指定来源阶段（接收/首件/完工/末件），与后端 DefectiveReworkSourceStage 数值保持一致 */
-  sourceStage?: number | null
 }
 
 export interface DefectiveReworkOrderDraftByInspectionInput {
@@ -101,10 +99,6 @@ export type DefectiveReworkOrderDraftResponse<TDoc = unknown, TDetail = unknown,
   sourceFlowDetailId?: number
   SourceFlowDetailType?: string
   sourceFlowDetailType?: string
-  SourceStage?: number
-  sourceStage?: number
-  AvailableSourceStages?: number[]
-  availableSourceStages?: number[]
   SourceInspectionId?: number
   sourceInspectionId?: number
   SourceInspectionType?: string
@@ -205,7 +199,6 @@ export async function CreateDefectiveReworkOrderByDailyPlanScanCode(
     InspectorEmployeeid: payload.inspectorEmployeeid ?? 0,
     FlowDetailTableName: payload.flowDetailTableName ?? '',
     FlowDetailId: payload.flowDetailId ?? 0,
-    SourceStage: payload.sourceStage ?? null,
   }
   return _client.callActionRaw<ApiMessagePack<{ Id: number; SourceInspectionId?: number; SourceInspectionType?: string }>>(
     'CreateDefectiveReworkOrderByDailyPlanScanCode',
@@ -219,8 +212,6 @@ export interface CreateDefectiveReworkOrderByFlowDetailInput {
   inspectorEmployeeid?: number
   flowDetailTableName: string
   flowDetailId: number
-  /** 可选：指定来源阶段（接收/首件/完工/末件），与后端 DefectiveReworkSourceStage 数值保持一致 */
-  sourceStage?: number | null
 }
 
 export interface DefectiveReworkOrderDraftByFlowDetailInput extends CreateDefectiveReworkOrderByFlowDetailInput {}
@@ -240,7 +231,6 @@ export async function CreateDefectiveReworkOrderByFlowDetail(
     InspectorEmployeeid: payload.inspectorEmployeeid ?? 0,
     FlowDetailTableName: payload.flowDetailTableName ?? '',
     FlowDetailId: payload.flowDetailId ?? 0,
-    SourceStage: payload.sourceStage ?? null,
   }
   return _client.callActionRaw<ApiMessagePack<{ Id: number; SourceInspectionId?: number; SourceInspectionType?: string }>>(
     'CreateDefectiveReworkOrderByFlowDetail',
@@ -268,7 +258,6 @@ export async function GetDefectiveReworkOrderDraftByDailyPlanScanCode<
     InspectorEmployeeid: payload.inspectorEmployeeid ?? 0,
     FlowDetailTableName: payload.flowDetailTableName ?? '',
     FlowDetailId: payload.flowDetailId ?? 0,
-    SourceStage: payload.sourceStage ?? null,
   }
   return _client.callActionRaw<ApiMessagePack<DefectiveReworkOrderDraftResponse<TDoc, TDetail, TCheckDetail>>>(
     'GetDefectiveReworkOrderDraftByDailyPlanScanCode',
@@ -315,7 +304,6 @@ export async function GetDefectiveReworkOrderDraftByFlowDetail<
     InspectorEmployeeid: payload.inspectorEmployeeid ?? 0,
     FlowDetailTableName: payload.flowDetailTableName ?? '',
     FlowDetailId: payload.flowDetailId ?? 0,
-    SourceStage: payload.sourceStage ?? null,
   }
   return _client.callActionRaw<ApiMessagePack<DefectiveReworkOrderDraftResponse<TDoc, TDetail, TCheckDetail>>>(
     'GetDefectiveReworkOrderDraftByFlowDetail',

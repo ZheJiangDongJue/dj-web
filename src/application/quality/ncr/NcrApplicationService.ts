@@ -85,8 +85,6 @@ export type NcrDraftFromInspectionResult =
       readonly document: DefectiveReworkOrderDocument
       readonly details: DefectiveReworkOrderDetail[]
       readonly checkDetails: DefectiveReworkOrderCheckDetail[]
-      readonly sourceStage?: number
-      readonly availableSourceStages?: number[]
       readonly sourceFlowDetailId?: number
       readonly sourceFlowDetailType?: string
     }
@@ -211,18 +209,6 @@ export type NcrScanExecuteResult =
        *
        */
       readonly checkDetails: DefectiveReworkOrderCheckDetail[]
-      /**
-       *
-       * 当前来源阶段（接收/首件/完工/末件）。
-       *
-       */
-      readonly sourceStage?: number
-      /**
-       *
-       * 当前来源流程卡明细可选阶段列表。
-       *
-       */
-      readonly availableSourceStages?: number[]
       /**
        *
        * 当前草稿所选来源流程卡明细主键。
@@ -352,7 +338,7 @@ export type NcrScanFlowDetailCandidate = FlowDetailCandidate
     return new ScanDocumentFlow<
       DefectiveReworkOrderDocument,
       DefectiveReworkOrderDetail,
-      { readonly inspectorEmployeeId: number; readonly sourceStage?: number | null }
+      { readonly inspectorEmployeeId: number }
     >({
       documentKind: FlowScanDocumentKind.Ncr,
       targetDocumentTableName: NCR_TABLE_NAME,
@@ -367,7 +353,6 @@ export type NcrScanFlowDetailCandidate = FlowDetailCandidate
             inspectorEmployeeid,
             flowDetailTableName,
             flowDetailId,
-            sourceStage: context?.sourceStage ?? null,
           }) as any
         }
         return QualityApi.GetDefectiveReworkOrderDraftByFlowDetail({
@@ -376,7 +361,6 @@ export type NcrScanFlowDetailCandidate = FlowDetailCandidate
           inspectorEmployeeid,
           flowDetailTableName,
           flowDetailId,
-          sourceStage: context?.sourceStage ?? null,
         }) as any
       },
       draftStrategy: { mode: 'document-and-details' },
@@ -485,8 +469,6 @@ export type NcrScanFlowDetailCandidate = FlowDetailCandidate
         document: draft.document,
         details: draft.details,
         checkDetails: draft.checkDetails,
-        sourceStage: draft.sourceStage,
-        availableSourceStages: draft.availableSourceStages,
         sourceFlowDetailId: draft.sourceFlowDetailId,
         sourceFlowDetailType: draft.sourceFlowDetailType,
       }
@@ -769,7 +751,7 @@ export type NcrScanFlowDetailCandidate = FlowDetailCandidate
     scanForCode: string,
     options?: {
       readonly inspectorEmployeeId?: number | null
-      readonly pickedFlowDetail?: { tableName: string; id: number; sourceStage?: number | null } | null
+      readonly pickedFlowDetail?: { tableName: string; id: number } | null
     },
   ): Promise<NcrScanExecuteResult> {
     if (!options?.pickedFlowDetail) {
@@ -788,7 +770,6 @@ export type NcrScanFlowDetailCandidate = FlowDetailCandidate
         pickedFlowDetail: options?.pickedFlowDetail ?? null,
         context: {
           inspectorEmployeeId: options?.inspectorEmployeeId ?? 0,
-          sourceStage: options?.pickedFlowDetail?.sourceStage ?? null,
         },
       }),
     )
@@ -803,7 +784,7 @@ export type NcrScanFlowDetailCandidate = FlowDetailCandidate
     scanForCode: string,
     options?: {
       readonly inspectorEmployeeId?: number | null
-      readonly pickedFlowDetail?: { tableName: string; id: number; sourceStage?: number | null } | null
+      readonly pickedFlowDetail?: { tableName: string; id: number } | null
     },
   ): Promise<NcrScanExecuteResult> {
     return this.toNcrScanResult(
@@ -817,7 +798,6 @@ export type NcrScanFlowDetailCandidate = FlowDetailCandidate
         pickedFlowDetail: options?.pickedFlowDetail ?? null,
         context: {
           inspectorEmployeeId: options?.inspectorEmployeeId ?? 0,
-          sourceStage: options?.pickedFlowDetail?.sourceStage ?? null,
         },
       }),
     )
@@ -832,7 +812,7 @@ export type NcrScanFlowDetailCandidate = FlowDetailCandidate
     scanForCode: string,
     options?: {
       readonly inspectorEmployeeId?: number | null
-      readonly pickedFlowDetail?: { tableName: string; id: number; sourceStage?: number | null } | null
+      readonly pickedFlowDetail?: { tableName: string; id: number } | null
     },
   ): Promise<NcrScanExecuteResult> {
     return this.toNcrScanResult(
@@ -846,7 +826,6 @@ export type NcrScanFlowDetailCandidate = FlowDetailCandidate
         pickedFlowDetail: options?.pickedFlowDetail ?? null,
         context: {
           inspectorEmployeeId: options?.inspectorEmployeeId ?? 0,
-          sourceStage: options?.pickedFlowDetail?.sourceStage ?? null,
         },
       }),
     )
@@ -854,17 +833,16 @@ export type NcrScanFlowDetailCandidate = FlowDetailCandidate
 
   /**
    *
-   * 用例：按当前来源流程卡明细与来源阶段重新生成 NCR 草稿（不落库）。
+   * 用例：按当前来源流程卡明细重新生成 NCR 草稿（不落库）。
    * @remarks
-   * - 用于页面“来源阶段”下拉切换；\\n
-   * - 这里不重新走扫码解析，避免把 UI 状态伪装成条码输入，也避免偏离后端按来源阶段筛选的逻辑。\\n
+   * - 用于页面返工工序切换后按后端默认来源规则刷新草稿；\\n
+   * - 这里不重新走扫码解析，避免把 UI 状态伪装成条码输入。\\n
    *
    */
   public async reloadDraftByFlowDetail(input: {
     readonly flowDetailTableName: string
     readonly flowDetailId: number
     readonly inspectorEmployeeId?: number | null
-    readonly sourceStage?: number | null
   }): Promise<NcrScanExecuteResult> {
     const flowDetailTableName = String(input?.flowDetailTableName ?? '').trim()
     const flowDetailId = normalizePositiveInt(input?.flowDetailId)
@@ -883,13 +861,12 @@ export type NcrScanFlowDetailCandidate = FlowDetailCandidate
         inspectorEmployeeid: input?.inspectorEmployeeId ?? 0,
         flowDetailTableName,
         flowDetailId,
-        sourceStage: input?.sourceStage ?? null,
       })
 
-      return this.toNcrDraftLoadedResult(pack, '未能切换来源阶段')
+      return this.toNcrDraftLoadedResult(pack, '未能刷新来源草稿')
     } catch (error) {
-      console.error('[NCR] 按来源阶段重新生成不合格返工单草稿失败:', error)
-      return { type: 'ERROR', level: 'error', message: '切换来源阶段失败，请稍后重试' }
+      console.error('[NCR] 按流程卡明细重新生成不合格返工单草稿失败:', error)
+      return { type: 'ERROR', level: 'error', message: '刷新来源草稿失败，请稍后重试' }
     }
   }
 
@@ -898,7 +875,7 @@ export type NcrScanFlowDetailCandidate = FlowDetailCandidate
    * 按 ERPClient 一致的默认顺序生成日计划 NCR 草稿。
    * @remarks
    * - 不预先用 FlowScan 缩小到“当前工序明细”，避免偏离后端默认候选排序；\n
-   * - 后端排序：接收顺序 -> 来源阶段（接收/首件/完工/末件）-> 工序顺序 -> 明细 id -> 最新来源单据。
+   * - 后端排序：接收顺序 -> 来源单据类型默认顺序 -> 工序顺序 -> 明细 id -> 最新来源单据。
    *
    */
   private async createDraftByDailyPlanDefaultOrder(
@@ -1024,10 +1001,6 @@ export type NcrScanFlowDetailCandidate = FlowDetailCandidate
 
     const data = unwrapDataContainer(pack) ?? {}
     const checkDetailsRaw = pickField<unknown>(data, 'CheckDetails', 'checkDetails')
-    const availableStagesRaw = pickField<unknown>(data, 'AvailableSourceStages', 'availableSourceStages')
-    const sourceStageRaw =
-      pickField<unknown>(data, 'SourceStage', 'sourceStage') ??
-      pickField<unknown>(picked.document as any, 'SourceStage', 'sourceStage')
     const sourceFlowDetailIdRaw =
       pickField<unknown>(data, 'SourceFlowDetailId', 'sourceFlowDetailId') ??
       pickField<unknown>(picked.document as any, 'CreateByDetailid', 'createByDetailid')
@@ -1035,26 +1008,18 @@ export type NcrScanFlowDetailCandidate = FlowDetailCandidate
       pickField<unknown>(data, 'SourceFlowDetailType', 'sourceFlowDetailType') ??
       pickField<unknown>(picked.document as any, 'CreateByDetailType', 'createByDetailType')
 
-    const sourceStage = Number(sourceStageRaw)
     const sourceFlowDetailId = normalizePositiveInt(sourceFlowDetailIdRaw)
     const sourceFlowDetailType = typeof sourceFlowDetailTypeRaw === 'string'
       ? sourceFlowDetailTypeRaw.trim()
       : sourceFlowDetailTypeRaw == null
         ? ''
         : String(sourceFlowDetailTypeRaw).trim()
-    const availableSourceStages = Array.isArray(availableStagesRaw)
-      ? availableStagesRaw
-          .map((v) => Number(v))
-          .filter((v) => Number.isFinite(v) && v > 0)
-      : undefined
 
     return {
       type: 'DRAFT_LOADED',
       document: picked.document,
       details: picked.details,
       checkDetails: Array.isArray(checkDetailsRaw) ? (checkDetailsRaw as DefectiveReworkOrderCheckDetail[]) : [],
-      sourceStage: Number.isFinite(sourceStage) && sourceStage > 0 ? sourceStage : undefined,
-      availableSourceStages,
       ...(sourceFlowDetailId ? { sourceFlowDetailId } : {}),
       ...(sourceFlowDetailType ? { sourceFlowDetailType } : {}),
       message: message || picked.message,

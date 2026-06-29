@@ -20,8 +20,6 @@ export type FlowDetailPickCandidate = {
   readonly bQty?: number
   /** 可选：工种内容（TypeofWork.Content） */
   readonly typeofWorkContent?: string
-  /** 可选：NCR 来源阶段（接收/首件/完工/末件），普通工序选择场景可为空 */
-  readonly sourceStage?: number | null
 }
 
 /**
@@ -77,7 +75,7 @@ export function FlowDetailPickDialog(props: {
             const workContent = c.typeofWorkContent?.trim() || ''
             return (
               <button
-                key={c.flowDetailTableName + ':' + c.flowDetailId + ':' + (c.sourceStage ?? '')}
+                key={c.flowDetailTableName + ':' + c.flowDetailId}
                 type="button"
                 disabled={!!props.busy}
                 onClick={() => void props.onPick(c)}

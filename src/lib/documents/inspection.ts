@@ -7,6 +7,17 @@
 
 /**
  *
+ * 判断“检验频率”是否为空值语义。
+ * - 用于区分“后端未给频率，前端采用默认展示策略”与“后端明确给出数字频率”
+ * - 仅将 null / undefined / 空串 / 纯空白串视为“空频率”
+ *
+ */
+export function isEmptyMeasureFrequency(text: string | null | undefined): boolean {
+  return (text ?? '').toString().trim() === ''
+}
+
+/**
+ *
  * 将输入解析为非负整数：空串/NaN/负数 → 0
  * @param n 原始输入
  *
@@ -52,11 +63,14 @@ export function computeJudgeQuantitySplit(
 /**
  *
  * 解析“检验频率”启用的实测项个数
+ * - 输入为空（含 null/undefined/空白串）时，默认启用全部 5 个实测项
  * - 输入如 '1' | '2' | '3' | '5' 等，非法时返回 0
  *
  */
 export function parseMeasureFrequency(text: string | null | undefined): number {
-  const n = Number((text ?? '').toString().trim())
+  const raw = (text ?? '').toString().trim()
+  if (isEmptyMeasureFrequency(raw)) return 5
+  const n = Number(raw)
   if (!Number.isFinite(n)) return 0
   return Math.max(0, Math.min(5, Math.floor(n)))
 }

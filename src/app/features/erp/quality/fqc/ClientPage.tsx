@@ -14,11 +14,13 @@ import ApproveFooterBar from '@/app/features/common/documents/ApproveFooterBar'
 import DocumentHeaderActions from '@/app/features/common/documents/DocumentHeaderActions'
 import DebugFab from '@/components/molecules/DebugFab'
 import { focusComboboxByAriaLabel } from '@/lib/dom/focusCombobox'
+import { isEmptyMeasureFrequency } from '@/lib/documents/inspection'
 import { useFqcViewModelClass as useFqcVM } from './viewmodels/FqcViewModelClass'
 import { DocumentStatus } from '@/types/erp-db.generated'
 import { type RequiredFieldRegistration } from '@/lib/validation/requiredFieldManager'
 import { hasStatusFlag, documentStatusToText } from '../shared/helpers'
 import FlowDetailPickDialog from '../shared/FlowDetailPickDialog'
+import { MeasureRequiredRegistrar } from '../shared/MeasureRequiredRegistrar'
 import { QualityPageWarmupStrip, useQualityPageWarmup } from '../shared/pageWarmup'
 
 /**
@@ -312,6 +314,7 @@ const FqcDetailsSection = memo(function FqcDetailsSection({
       itemClassName={itemClassName}
       renderItem={({ item, index }) => {
         const enabledCount = parseMeasureFrequency((item as any).Frequency)
+        const requireAtLeastOneMeasure = isEmptyMeasureFrequency((item as any).Frequency)
         return (
           <>
             <div className="mb-2 flex items-center justify-between">
@@ -398,9 +401,10 @@ const FqcDetailsSection = memo(function FqcDetailsSection({
                 />
               ))}
             </div>
-            <DetailRequiredRegistrar
+            <MeasureRequiredRegistrar
               rowIndex={index}
               enabledCount={enabledCount}
+              requireAtLeastOneMeasure={requireAtLeastOneMeasure}
               registerRequired={registerRequired}
               details={details}
             />
@@ -716,72 +720,3 @@ function GridInput({
   )
 }
 
-/**
- *
- * 明细行必填注册器：为每行“实测1~N”注册必填规则
- *
- */
-function DetailRequiredRegistrar({
-  rowIndex,
-  enabledCount,
-  registerRequired,
-  details,
-}: {
-  rowIndex: number
-  enabledCount: number
-  registerRequired: (key: string, registration: RequiredFieldRegistration<unknown>) => () => void
-  details: Array<any>
-}) {
-  const detailsRef = useRef(details)
-  useEffect(() => {
-    detailsRef.current = details
-  }, [details])
-
-  useEffect(() => {
-    const unregs: Array<() => void> = []
-    for (let i = 0; i < Math.max(0, enabledCount); i++) {
-      const key = `detail:${rowIndex}:${i + 1}`
-      const focus = () => {
-        if (typeof window === 'undefined') return
-        try {
-          const selector = `[aria-label="明细第${rowIndex + 1}行-实测${i + 1}"]`
-          const el = document.querySelector<HTMLElement>(selector)
-          if (el) {
-            try {
-              el.scrollIntoView({ block: 'center', behavior: 'smooth' })
-            } catch {}
-            try {
-              el.focus()
-            } catch {}
-          }
-        } catch {}
-      }
-      const getValue = () => {
-        const list = detailsRef.current || []
-        const it = Array.isArray(list)
-          ? (list as Array<any>)[rowIndex]
-          : undefined
-        const v = it ? (it as any)[`MeasuredRecord${i + 1}`] : undefined
-        return v
-      }
-      const isEmpty = (v: unknown) =>
-        v == null || (typeof v === 'string' ? v.trim() === '' : v === '')
-      unregs.push(
-        registerRequired(key, {
-          getValue,
-          focus,
-          isEmpty,
-        }),
-      )
-    }
-    return () => {
-      for (const u of unregs) {
-        try {
-          u()
-        } catch {}
-      }
-    }
-  }, [rowIndex, enabledCount, registerRequired])
-
-  return null
-}
