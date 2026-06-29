@@ -161,6 +161,64 @@ describe('createAuthFetch', () => {
     expect(refresh).toHaveBeenCalledTimes(1)
   })
 
+  it('passes outer request signal to refresh', async () => {
+    const controller = new AbortController()
+    const refresh = vi.fn(async (ctx) => {
+      expect(ctx.signal).toBe(controller.signal)
+      return { accessToken: 'new' }
+    })
+
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const auth = new Headers(init?.headers).get('Authorization')
+      if (auth === 'Bearer new') return { status: 200 } as Response
+      return { status: 401 } as Response
+    })
+
+    const authFetch = createAuthFetch({
+      fetch: fetchMock as unknown as typeof fetch,
+      getAccessToken: () => 'old',
+      setAccessToken: () => {},
+      refresh,
+    })
+
+    const res = await authFetch('https://example.com/api', { method: 'GET', signal: controller.signal })
+
+    expect(res.status).toBe(200)
+  })
+
+  it('does not clear auth state when refresh is aborted by outer signal', async () => {
+    let token: string | null = 'old'
+    const onAuthFailure = vi.fn()
+    const controller = new AbortController()
+    const refresh = vi.fn(async (ctx) => new Promise<{ accessToken: string }>((_resolve, reject) => {
+      if (ctx.signal?.aborted) {
+        reject(ctx.signal.reason ?? new DOMException('Aborted', 'AbortError'))
+        return
+      }
+      ctx.signal?.addEventListener('abort', () => {
+        reject(ctx.signal?.reason ?? new DOMException('Aborted', 'AbortError'))
+      })
+    }))
+
+    const fetchMock = vi.fn(async () => ({ status: 401 } as Response))
+
+    const authFetch = createAuthFetch({
+      fetch: fetchMock as unknown as typeof fetch,
+      getAccessToken: () => token,
+      setAccessToken: (next) => { token = next },
+      refresh,
+      onAuthFailure,
+    })
+
+    const pending = authFetch('https://example.com/api', { method: 'GET', signal: controller.signal })
+    const assertion = expect(pending).rejects.toMatchObject({ name: 'AbortError' })
+    controller.abort(new DOMException('Aborted', 'AbortError'))
+
+    await assertion
+    expect(token).toBe('old')
+    expect(onAuthFailure).not.toHaveBeenCalled()
+  })
+
   it('calls onAuthFailure when refresh fails', async () => {
     let token: string | null = 'old'
 

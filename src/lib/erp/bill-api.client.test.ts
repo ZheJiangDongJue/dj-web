@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import authFetch from '@/lib/auth/interceptor'
 import { BillApiClient } from './bill-api.client'
 
@@ -27,6 +27,10 @@ describe('BillApiClient', () => {
     authFetchMock.mockReset()
   })
 
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   it.each([
     ['false', false],
     ['0', 0],
@@ -48,5 +52,26 @@ describe('BillApiClient', () => {
     const result = await client.callActionRaw<unknown>('PrimitiveValue', { method: 'GET' })
 
     expect(result).toBe(false)
+  })
+
+  it('callAction 即使传入外部 signal 也会保留内部超时', async () => {
+    vi.useFakeTimers()
+    authFetchMock.mockImplementationOnce((_url, init) => new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener('abort', () => {
+        reject(init.signal?.reason ?? new DOMException('Aborted', 'AbortError'))
+      })
+    }))
+
+    const external = new AbortController()
+    const client = new BillApiClient({ timeoutMs: 10 })
+    const pending = client.callAction<unknown>('SlowAction', {
+      method: 'GET',
+      signal: external.signal,
+    })
+    const assertion = expect(pending).rejects.toMatchObject({ code: 'NETWORK_TIMEOUT' })
+
+    await vi.advanceTimersByTimeAsync(10)
+
+    await assertion
   })
 })

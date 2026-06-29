@@ -83,6 +83,27 @@ describe('refreshViaNextAuthProxy', () => {
     await refreshViaNextAuthProxy({ fetch: fetchMock as unknown as typeof fetch })
   })
 
+  it('passes ctx.signal to refresh fetch', async () => {
+    const controller = new AbortController()
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      expect(init?.signal).toBe(controller.signal)
+      return makeResponse(200, JSON.stringify({
+        success: true,
+        data: {
+          accessToken: 't',
+          refreshToken: 'r',
+          expiresAt: '2099-01-01T00:00:00Z',
+          user: { id: 1, name: 'n' },
+        },
+      }))
+    })
+
+    await refreshViaNextAuthProxy({
+      fetch: fetchMock as unknown as typeof fetch,
+      signal: controller.signal,
+    })
+  })
+
   it('handles document.cookie throwing (no CSRF header)', async () => {
     ;(globalThis as any).window = { document: {} }
     const doc: any = {}

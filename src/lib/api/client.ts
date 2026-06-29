@@ -143,6 +143,7 @@ export async function refreshViaNextAuthProxy(ctx: RefreshContext): Promise<Logi
     headers,
     credentials: 'include',
     cache: 'no-store',
+    signal: ctx.signal,
   })
 
   const raw = await res.text()

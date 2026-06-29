@@ -54,6 +54,22 @@ describe('auth api helper', () => {
     await expect(api.del('/network')).rejects.toMatchObject({ code: 'NETWORK_ERROR' })
   })
 
+  it('请求被取消时映射为 NETWORK_TIMEOUT', async () => {
+    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener('abort', () => {
+        reject(init.signal?.reason ?? new DOMException('Aborted', 'AbortError'))
+      })
+    }))
+    ;(globalThis as any).fetch = fetchMock as unknown as typeof fetch
+    const controller = new AbortController()
+    const pending = api.get('/timeout', { signal: controller.signal })
+    const assertion = expect(pending).rejects.toMatchObject({ code: 'NETWORK_TIMEOUT' })
+
+    controller.abort(new DOMException('Aborted', 'AbortError'))
+
+    await assertion
+  })
+
   it('保留自定义 Content-Type 并映射业务错误', async () => {
     const fetchMock = vi.fn(async () => ({
       ok: false,

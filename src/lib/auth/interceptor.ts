@@ -78,8 +78,8 @@ const authFetch = createAuthFetch({
       TokenStorage.clear({ reason: 'auth-cleared', silent: false })
     }
   },
-  refresh: async () => {
-    const res = await AuthService.refresh()
+  refresh: async (ctx) => {
+    const res = await AuthService.refresh(ctx.signal)
     return { accessToken: res.accessToken }
   },
   isAuthRequest: (input) => /\/api\/auth\//.test(toUrlString(input)),

@@ -21,6 +21,15 @@ export interface RefreshContext {
    *
    */
   cookie?: string
+  /**
+   *
+   * 外层业务请求的取消信号。
+   * @remarks
+   * - 刷新 access token 时复用同一个信号，避免业务请求已超时但刷新请求继续挂起；
+   * - 若刷新因超时/取消失败，会按现有认证失败流程清理状态。
+   *
+   */
+  signal?: AbortSignal
 }
 
 export interface RefreshResult {
@@ -101,6 +110,15 @@ function withAuthHeader(init: RequestInit, token: string | null): RequestInit {
   }
 }
 
+function isAbortLikeError(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) return false
+  const name = 'name' in error ? (error as { name?: string }).name : undefined
+  const code = 'code' in error ? (error as { code?: string | number }).code : undefined
+  return name === 'AbortError' || name === 'TimeoutError'
+    || code === 'NETWORK_TIMEOUT'
+    || code === 'ABORT_ERR'
+}
+
 async function safeSingleFlightRefresh(
   refresh: RefreshFn,
   ctx: RefreshContext,
@@ -116,6 +134,9 @@ async function safeSingleFlightRefresh(
         }
         return result.accessToken
       } catch (e) {
+        if (isAbortLikeError(e)) {
+          throw e
+        }
         try {
           setAccessToken?.(null)
         } catch {
@@ -165,6 +186,7 @@ export function createAuthFetch(options: CreateAuthFetchOptions) {
       {
         fetch: baseFetch,
         cookie,
+        signal: init.signal ?? undefined,
       },
       options.onAuthFailure,
       options.setAccessToken

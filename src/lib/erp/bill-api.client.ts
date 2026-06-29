@@ -165,6 +165,43 @@ function getDbChangedPackSuccessFlag(json: unknown): boolean | null {
   return typeof raw === 'boolean' ? raw : null
 }
 
+function isAbortLikeError(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null || !('name' in error)) return false
+  const name = (error as { name?: string }).name
+  return name === 'AbortError' || name === 'TimeoutError'
+}
+
+function linkAbortSignal(source: AbortSignal | undefined, target: AbortController): void {
+  if (!source) return
+  if (source.aborted) {
+    target.abort(source.reason)
+    return
+  }
+  source.addEventListener('abort', () => target.abort(source.reason), { once: true })
+}
+
+function createAbortControllerWithTimeout(
+  timeoutMs: number,
+  externalSignal?: AbortSignal,
+): { readonly signal: AbortSignal; readonly clear: () => void } {
+  const controller = new AbortController()
+  linkAbortSignal(externalSignal, controller)
+  const normalizedTimeout = Number.isFinite(timeoutMs) ? Math.max(0, Math.floor(timeoutMs)) : 0
+  const timeout =
+    normalizedTimeout > 0
+      ? setTimeout(() => {
+          controller.abort(new DOMException('Request timed out', 'TimeoutError'))
+        }, normalizedTimeout)
+      : null
+
+  return {
+    signal: controller.signal,
+    clear: () => {
+      if (timeout) clearTimeout(timeout)
+    },
+  }
+}
+
 /**
  *
  * 根据 Action 名推断 HTTP 方法：
@@ -239,15 +276,14 @@ export class BillApiClient {
     if (!headers.has('Accept')) headers.set('Accept', 'application/json')
     if (method !== 'GET' && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json')
 
-    const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), options?.timeoutMs ?? this.timeoutMs)
+    const abort = createAbortControllerWithTimeout(options?.timeoutMs ?? this.timeoutMs, options?.signal)
 
     try {
       const res = await authFetch(url, {
         method,
         headers,
         body: method === 'GET' ? undefined : options?.body ? JSON.stringify(options.body) : undefined,
-        signal: options?.signal ?? controller.signal,
+        signal: abort.signal,
         credentials: 'include',
       })
 
@@ -281,12 +317,10 @@ export class BillApiClient {
       throw toUnifiedError({ code: 'UNKNOWN_ERROR', message: msg || `请求失败（HTTP ${status}）` }, { status, url, action })
     } catch (err) {
       // 统一二次包装（可能来自网络/超时/Abort）
-      const isAbortError = (e: unknown): boolean =>
-        typeof e === 'object' && e !== null && 'name' in e && (e as { name?: string }).name === 'AbortError'
       const hasCode = (e: unknown): e is { code?: string } =>
         typeof e === 'object' && e !== null && 'code' in e
 
-      if (isAbortError(err)) {
+      if (isAbortLikeError(err)) {
         throw toUnifiedError({ code: 'NETWORK_TIMEOUT', message: '请求超时' }, { url, action })
       }
       if (hasCode(err)) {
@@ -297,7 +331,7 @@ export class BillApiClient {
         : '')
       throw toUnifiedError({ code: 'UNKNOWN_ERROR', message: msg || '网络异常' }, { url, action })
     } finally {
-      clearTimeout(timeout)
+      abort.clear()
     }
   }
 
@@ -321,15 +355,14 @@ export class BillApiClient {
     if (!headers.has('Accept')) headers.set('Accept', 'application/json')
     if (method !== 'GET' && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json')
 
-    const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), options?.timeoutMs ?? this.timeoutMs)
+    const abort = createAbortControllerWithTimeout(options?.timeoutMs ?? this.timeoutMs, options?.signal)
 
     try {
       const res = await authFetch(url, {
         method,
         headers,
         body: method === 'GET' ? undefined : options?.body ? JSON.stringify(options.body) : undefined,
-        signal: options?.signal ?? controller.signal,
+        signal: abort.signal,
         credentials: 'include',
       })
 
@@ -375,12 +408,10 @@ export class BillApiClient {
       throw toUnifiedError({ code: 'UNKNOWN_ERROR', message: msg || `请求失败（HTTP ${status}）` }, { status, url, action })
     } catch (err) {
       // 统一二次包装（可能来自网络/超时/Abort）
-      const isAbortError = (e: unknown): boolean =>
-        typeof e === 'object' && e !== null && 'name' in e && (e as { name?: string }).name === 'AbortError'
       const hasCode = (e: unknown): e is { code?: string } =>
         typeof e === 'object' && e !== null && 'code' in e
 
-      if (isAbortError(err)) {
+      if (isAbortLikeError(err)) {
         throw toUnifiedError({ code: 'NETWORK_TIMEOUT', message: '请求超时' }, { url, action })
       }
       if (hasCode(err)) {
@@ -391,7 +422,7 @@ export class BillApiClient {
         : '')
       throw toUnifiedError({ code: 'UNKNOWN_ERROR', message: msg || '网络异常' }, { url, action })
     } finally {
-      clearTimeout(timeout)
+      abort.clear()
     }
   }
 

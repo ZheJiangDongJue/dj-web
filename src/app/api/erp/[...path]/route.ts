@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { createUpstreamAbortController, isUpstreamAbortError } from '@/app/api/_shared/upstreamProxyTimeout'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -86,7 +87,9 @@ async function proxy(req: NextRequest, params: Params) {
     }
   }
 
+  const abort = createUpstreamAbortController(req)
   let upstream: Response
+  let buf: ArrayBuffer
   try {
     upstream = await fetch(target, {
       method,
@@ -94,18 +97,28 @@ async function proxy(req: NextRequest, params: Params) {
       body,
       redirect: 'manual',
       cache: 'no-store',
+      signal: abort.signal,
     })
-  } catch {
+    buf = await upstream.arrayBuffer()
+  } catch (error) {
+    if (isUpstreamAbortError(error)) {
+      console.error('[erp-proxy] upstream fetch timeout', {
+        method,
+        path: target.pathname,
+      })
+      return NextResponse.json({ code: 'NETWORK_TIMEOUT', message: '请求超时，请稍后重试' }, { status: 504 })
+    }
     // 网络异常：记录最小必要信息，不包含敏感内容
     console.error('[erp-proxy] upstream fetch failed', {
       method,
       path: target.pathname,
     })
     return NextResponse.json({ code: 'NETWORK_ERROR', message: '网络异常，请稍后重试' }, { status: 502 })
+  } finally {
+    abort.clear()
   }
 
   // 读取上游响应体并复制头部（保留 Set-Cookie）
-  const buf = await upstream.arrayBuffer()
   const resHeaders = new Headers()
 
   // 先复制除 set-cookie 外的头部
@@ -156,4 +169,3 @@ export async function OPTIONS(req: NextRequest, ctx: { params: Promise<Params> }
   const params = await ctx.params
   return proxy(req, params)
 }
-

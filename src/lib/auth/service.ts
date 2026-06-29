@@ -49,9 +49,14 @@ export class AuthService {
    * - 返回包含新的 accessToken/refreshToken/expiresAt。
    *
    */
-  static async refresh(): Promise<LoginSuccess> {
+  static async refresh(signal?: AbortSignal): Promise<LoginSuccess> {
     const csrf = getCsrfToken()
-    const init = csrf ? { headers: { 'X-Csrf-Token': csrf } } : undefined
+    const init = csrf || signal
+      ? {
+          ...(csrf ? { headers: { 'X-Csrf-Token': csrf } } : {}),
+          ...(signal ? { signal } : {}),
+        }
+      : undefined
     return api.post<LoginSuccess>('/refresh', undefined, init)
   }
 
@@ -60,4 +65,3 @@ export class AuthService {
     await api.post<unknown>('/logout')
   }
 }
-

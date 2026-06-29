@@ -1,5 +1,6 @@
 import type { ApiEnvelope, ApiError } from '@/types/auth'
 import { extractUserFacingErrorMessage } from '@/lib/errors/user-facing-error'
+import { HTTP_TIMEOUT_MS } from '@/lib/config'
 
 const AUTH_BASE = '/api/auth'
 
@@ -20,6 +21,7 @@ function toApiError(code: string | number | undefined, message?: string): ApiErr
     TOKEN_INVALID: '登录状态已过期，请重新登录',
     AUTH_THIRD_PARTY_FAILED: '第三方登录失败，请尝试其他登录方式',
     NETWORK_ERROR: '网络异常，请稍后重试',
+    NETWORK_TIMEOUT: '请求超时，请稍后重试',
     UNKNOWN_ERROR: '发生错误，请稍后重试',
   }
   const finalCode = typeof code === 'string' ? code : code != null ? String(code) : 'UNKNOWN_ERROR'
@@ -34,14 +36,48 @@ function isApiError(x: unknown): x is ApiError {
   return typeof x === 'object' && x !== null && 'code' in x && 'message' in x
 }
 
+function linkAbortSignal(source: AbortSignal | undefined, target: AbortController): void {
+  if (!source) return
+  if (source.aborted) {
+    target.abort(source.reason)
+    return
+  }
+  source.addEventListener('abort', () => target.abort(source.reason), { once: true })
+}
+
+function createAbortControllerWithTimeout(signal?: AbortSignal): { readonly signal: AbortSignal; readonly clear: () => void } {
+  const controller = new AbortController()
+  linkAbortSignal(signal, controller)
+  const timeout =
+    HTTP_TIMEOUT_MS > 0
+      ? setTimeout(() => {
+          controller.abort(new DOMException('Request timed out', 'TimeoutError'))
+        }, HTTP_TIMEOUT_MS)
+      : null
+
+  return {
+    signal: controller.signal,
+    clear: () => {
+      if (timeout) clearTimeout(timeout)
+    },
+  }
+}
+
+function isAbortLikeError(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null || !('name' in error)) return false
+  const name = (error as { name?: string }).name
+  return name === 'AbortError' || name === 'TimeoutError'
+}
+
 async function request<T>(path: string, init: RequestInit): Promise<T> {
   const url = path.startsWith('http') ? path : `${AUTH_BASE}${path}`
   const headers = new Headers(init.headers || {})
   if (!headers.has('Content-Type') && init.body) {
     headers.set('Content-Type', 'application/json')
   }
+  const abort = createAbortControllerWithTimeout(init.signal ?? undefined)
   try {
-    const res = await fetch(url, { ...init, headers, credentials: 'include' })
+    const res = await fetch(url, { ...init, headers, credentials: 'include', signal: abort.signal })
     const raw = await res.text()
     const json = safeJsonParse<ApiEnvelope<T>>(raw)
 
@@ -68,10 +104,15 @@ async function request<T>(path: string, init: RequestInit): Promise<T> {
   } catch (e) {
     // Fetch 异常/超时/网络错误
     const err = e as unknown
+    if (isAbortLikeError(err)) {
+      throw toApiError('NETWORK_TIMEOUT')
+    }
     if (isApiError(err)) {
       throw err
     }
     throw toApiError('NETWORK_ERROR')
+  } finally {
+    abort.clear()
   }
 }
 
