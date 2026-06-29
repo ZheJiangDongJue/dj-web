@@ -31,10 +31,10 @@ import {
 
 /**
  *
- * 视图明细：在 FirstInspectionDetail 基础上补充 id/CheckResult 可空。
+ * 视图明细：在 FirstInspectionDetail 基础上补充前端本地 key 与可空判定值。
  *
  */
-export type FaiDetailView = FirstInspectionDetail & { id?: string; CheckResult?: number | '' }
+export type FaiDetailView = FirstInspectionDetail & { CheckResult?: number | ''; __localKey?: string }
 
 /**
  *
@@ -47,6 +47,7 @@ export type FaiDetailView = FirstInspectionDetail & { id?: string; CheckResult?:
  */
 export class FaiViewModel extends QualityDocumentBase<FirstInspectionDocument, FirstInspectionDetail> {
   public static __djScanListenerKey = 'dj-web:quality:fai'
+  private static detailLocalKeySeed = 0
 
   /**
    *
@@ -313,7 +314,7 @@ export class FaiViewModel extends QualityDocumentBase<FirstInspectionDocument, F
         this.updateMaterialCodeFromBill()
         this.emit()
       },
-      setDetails: (next) => { this.details = next as any; this.emit() },
+      setDetails: (next) => { this.details = this.ensureDetailsLocalKeys(next as any); this.emit() },
       setStatus: (next) => {
         // 后端有时返回 0（表示未审批），统一映射为位标记“未审批”以兼容位运算判断
         const n = typeof next === 'number' ? next : Number(next as unknown)
@@ -394,15 +395,88 @@ export class FaiViewModel extends QualityDocumentBase<FirstInspectionDocument, F
 
   /**
    *
+   * 确保明细对象拥有稳定的本地 key。
+   * @remarks
+   * - 已保存明细优先使用数据库 id，避免刷新后 key 抖动；
+   * - 新建/草稿明细使用本地自增 key，避免删除中间卡片后 React 复用旧输入状态；
+   * - 该 key 只服务前端渲染与定位，不作为业务主键保存。
+   * @param detail 明细对象。
+   * @returns 稳定本地 key。
+   *
+   */
+  private ensureDetailLocalKey(detail: any): string {
+    if (!detail || typeof detail !== 'object') return ''
+    const existing = typeof detail.__localKey === 'string' ? detail.__localKey.trim() : ''
+    if (existing) return existing
+
+    const idRaw = detail.id ?? detail.Id ?? detail.ID
+    const id = typeof idRaw === 'number' ? idRaw : Number(idRaw)
+    if (Number.isFinite(id) && id > 0) {
+      const key = `id_${id}`
+      detail.__localKey = key
+      return key
+    }
+
+    FaiViewModel.detailLocalKeySeed += 1
+    const key = `local_${FaiViewModel.detailLocalKeySeed}`
+    detail.__localKey = key
+    return key
+  }
+
+  /**
+   *
+   * 为一组明细补齐稳定本地 key。
+   * @param details 明细数组。
+   * @returns 补齐 key 后的同一组明细。
+   *
+   */
+  private ensureDetailsLocalKeys(details: FaiDetailView[]): FaiDetailView[] {
+    const list = Array.isArray(details) ? details : []
+    for (const detail of list) this.ensureDetailLocalKey(detail as any)
+    return list
+  }
+
+  /**
+   *
+   * 获取明细稳定 key（供列表渲染与编辑定位使用）。
+   * @param detail 明细对象。
+   * @returns 稳定本地 key。
+   *
+   */
+  public getDetailKey(detail: FaiDetailView | FirstInspectionDetail): string {
+    return this.ensureDetailLocalKey(detail as any)
+  }
+
+  /**
+   *
    * 设置指定行的实测值。
    *
    */
   public setMeasureAtRow(rowIndex: number, measureIndex: number, v: string | number | ''): void {
     if (this.disableDetailEdit) return
+    const list = Array.isArray(this.details) ? this.details : []
+    const current = list[rowIndex] as any
+    if (!current) return
+    this.setMeasureByDetailKey(this.ensureDetailLocalKey(current), measureIndex, v)
+  }
+
+  /**
+   *
+   * 按稳定明细 key 设置实测值。
+   * @param detailKey 明细本地 key。
+   * @param measureIndex 实测项索引（0~4）。
+   * @param v 新值。
+   *
+   */
+  public setMeasureByDetailKey(detailKey: string, measureIndex: number, v: string | number | ''): void {
+    if (this.disableDetailEdit) return
+    const normalizedDetailKey = String(detailKey ?? '').trim()
+    if (!normalizedDetailKey) return
     const key = `MeasuredRecord${measureIndex + 1}` as keyof FirstInspectionDetail
     const nextValue = String(v ?? '')
     const list = Array.isArray(this.details) ? this.details : []
-    const current = list[rowIndex] as any
+    const rowIndex = list.findIndex((it) => this.ensureDetailLocalKey(it as any) === normalizedDetailKey)
+    const current = rowIndex >= 0 ? (list[rowIndex] as any) : null
     if (!current) return
 
     // 若值未变化则不 emit，避免输入过程中频繁触发整页刷新。
@@ -410,7 +484,7 @@ export class FaiViewModel extends QualityDocumentBase<FirstInspectionDocument, F
 
     // 仅更新目标行，避免 map 全量明细带来的性能开销。
     const nextList = list.slice()
-    nextList[rowIndex] = ({ ...(current as any), [key]: nextValue } as any)
+    nextList[rowIndex] = ({ ...(current as any), __localKey: normalizedDetailKey, [key]: nextValue } as any)
     this.details = nextList as any
     this.emit()
   }
@@ -422,8 +496,26 @@ export class FaiViewModel extends QualityDocumentBase<FirstInspectionDocument, F
    */
   public removeDetailAt(rowIndex: number): void {
     if (this.disableDetailEdit) return
-    const list = (this.details || []).filter((_, idx) => idx !== rowIndex)
-    this.details = list as any
+    const list = Array.isArray(this.details) ? this.details : []
+    const current = list[rowIndex] as any
+    if (!current) return
+    this.removeDetailByKey(this.ensureDetailLocalKey(current))
+  }
+
+  /**
+   *
+   * 按稳定明细 key 删除明细。
+   * @param detailKey 明细本地 key。
+   *
+   */
+  public removeDetailByKey(detailKey: string): void {
+    if (this.disableDetailEdit) return
+    const normalizedDetailKey = String(detailKey ?? '').trim()
+    if (!normalizedDetailKey) return
+    const list = Array.isArray(this.details) ? this.details : []
+    const next = list.filter((it) => this.ensureDetailLocalKey(it as any) !== normalizedDetailKey)
+    if (next.length === list.length) return
+    this.details = next as any
     this.emit()
   }
 
@@ -621,7 +713,7 @@ export class FaiViewModel extends QualityDocumentBase<FirstInspectionDocument, F
    */
   public replaceState(payload: Partial<{ bill: FirstInspectionDocument; details: FaiDetailView[]; rawDocument: any }>): void {
     if ('bill' in payload && payload.bill) this.bill = payload.bill
-    if ('details' in payload && payload.details) this.details = payload.details
+    if ('details' in payload && payload.details) this.details = this.ensureDetailsLocalKeys(payload.details)
     this.status = parseDocumentStatus((this.bill as any)?.Status ?? (this.bill as any)?.status)
     this.updateMaterialCodeFromBill()
     this.deriveProcessName()
@@ -742,7 +834,7 @@ export class FaiViewModel extends QualityDocumentBase<FirstInspectionDocument, F
     if (check?.hasEmpty) {
       const key = check.firstEmptyKey ?? ''
       if (key.startsWith('detail:')) {
-        const m = key.match(/^detail:(\d+):(\d+)/)
+        const m = key.match(/^detail:(?:(?:[^:]+):)?(\d+):(\d+)/)
         const row = m ? Number(m[1]) + 1 : undefined
         const col = m ? Number(m[2]) : undefined
         const fieldName = typeof col === 'number' && Number.isFinite(col) ? `实测${col}` : '必填项'

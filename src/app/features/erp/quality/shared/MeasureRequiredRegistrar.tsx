@@ -22,6 +22,14 @@ function isMeasureValueEmpty(value: unknown): boolean {
 export interface MeasureRequiredRegistrarProps {
   /**
    *
+   * 当前明细行稳定 key。
+   * - 优先使用 ViewModel 分配的本地 key；
+   * - 删除中间行后，稳定 key 可保证旧行校验注册被卸载，不会复用到下一张卡片。
+   *
+   */
+  rowKey?: string
+  /**
+   *
    * 当前明细行索引（从 0 开始）。
    *
    */
@@ -66,6 +74,7 @@ export interface MeasureRequiredRegistrarProps {
  *
  */
 export function MeasureRequiredRegistrar({
+  rowKey,
   rowIndex,
   enabledCount,
   requireAtLeastOneMeasure,
@@ -82,7 +91,10 @@ export function MeasureRequiredRegistrar({
     const unregs: Array<() => void> = []
 
     for (let i = 0; i < Math.max(0, enabledCount); i++) {
-      const key = `detail:${rowIndex}:${i + 1}`
+      const normalizedRowKey = String(rowKey ?? '').trim()
+      const key = normalizedRowKey
+        ? `detail:${normalizedRowKey}:${rowIndex}:${i + 1}`
+        : `detail:${rowIndex}:${i + 1}`
       const focus = () => {
         if (typeof window === 'undefined') return
         try {
@@ -139,7 +151,7 @@ export function MeasureRequiredRegistrar({
         } catch {}
       }
     }
-  }, [rowIndex, enabledCount, requireAtLeastOneMeasure, registerRequired])
+  }, [rowKey, rowIndex, enabledCount, requireAtLeastOneMeasure, registerRequired])
 
   return null
 }

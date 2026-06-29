@@ -152,6 +152,42 @@ describe('FqcViewModelClass', () => {
     expect((toast.dismiss as any).mock.invocationCallOrder[0]).toBeLessThan((assignMock as any).mock.invocationCallOrder[0])
   })
 
+  test('删除中间明细后审批不应把已删除明细带回保存快照', async () => {
+    const save = vi.fn(async (_payload: any) => ({ id: 88, aggregate: null }))
+    const approve = vi.fn(async () => ({ success: true, message: 'ok', ncrHint: false }))
+    const appService = createMockAppService({ save, approve })
+    const vm = new FqcViewModel(appService)
+    vm.required.checkEmptyAndFocus = vi.fn(() => ({ hasEmpty: false, emptyKeys: [] }))
+    ;(vm.bill as any).Code = 'FQC-DEL-001'
+    ;(vm.bill as any).DocumentStatus = DocumentStatus.未审批
+    const keepA = createDetail()
+    keepA.ProjectName = '保留A'
+    const deleted = createDetail()
+    deleted.ProjectName = '删除B'
+    const keepC = createDetail()
+    keepC.ProjectName = '保留C'
+    vm.details = [keepA, deleted, keepC] as any
+
+    const deletedKey = vm.getDetailKey(vm.details[1])
+    vm.removeDetailByKey(deletedKey)
+    const ok = await vm.handleApprove()
+
+    expect(ok).toBe(true)
+    expect(vm.details.map((d) => d.ProjectName)).toEqual(['保留A', '保留C'])
+    expect(save).toHaveBeenCalledWith(expect.objectContaining({
+      details: expect.arrayContaining([
+        expect.objectContaining({ ProjectName: '保留A' }),
+        expect.objectContaining({ ProjectName: '保留C' }),
+      ]),
+    }))
+    expect(save.mock.calls[0]?.[0]?.details.map((d: any) => d.ProjectName)).toEqual(['保留A', '保留C'])
+    expect(approve).toHaveBeenCalledWith(88, expect.objectContaining({
+      details: expect.not.arrayContaining([
+        expect.objectContaining({ ProjectName: '删除B' }),
+      ]),
+    }))
+  })
+
   test('processScanCode 应用服务返回草稿时写入状态', async () => {
     const doc = createDocument()
     const detail = createDetail()

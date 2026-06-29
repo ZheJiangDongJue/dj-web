@@ -89,4 +89,40 @@ describe('MeasureRequiredRegistrar', () => {
       emptyKeys: ['detail:0:2', 'detail:0:3'],
     })
   })
+
+  it('提供稳定 rowKey 时，注册 key 不随 index 复用而残留旧行', () => {
+    const manager = createRequiredFieldManager<unknown>()
+    const registerRequired = (key: string, registration: any) => manager.register(key, registration)
+
+    const { rerender } = render(
+      <MeasureRequiredRegistrar
+        rowKey="local_deleted"
+        rowIndex={1}
+        enabledCount={1}
+        requireAtLeastOneMeasure={false}
+        registerRequired={registerRequired}
+        details={[{}, { MeasuredRecord1: '' }]}
+      />,
+    )
+
+    expect(manager.keys()).toEqual(['detail:local_deleted:1:1'])
+
+    rerender(
+      <MeasureRequiredRegistrar
+        rowKey="local_kept"
+        rowIndex={1}
+        enabledCount={1}
+        requireAtLeastOneMeasure={false}
+        registerRequired={registerRequired}
+        details={[{}, { MeasuredRecord1: 'ok' }]}
+      />,
+    )
+
+    expect(manager.keys()).toEqual(['detail:local_kept:1:1'])
+    expect(manager.checkEmpty()).toEqual({
+      hasEmpty: false,
+      firstEmptyKey: undefined,
+      emptyKeys: [],
+    })
+  })
 })

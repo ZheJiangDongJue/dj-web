@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest'
 import type { FirstInspectionApplicationService } from '@/application/quality/fai/FirstInspectionApplicationService'
-import { DocumentStatus } from '@/types/erp-db.generated'
+import { DocumentStatus, FirstInspectionDetail } from '@/types/erp-db.generated'
 
 vi.mock('sonner', () => ({
   toast: {
@@ -57,6 +57,13 @@ describe('FaiViewModelClass', () => {
     delete (globalThis as any).window
     delete (globalThis as any).document
   })
+
+  function createDetail(projectName: string) {
+    const detail = new FirstInspectionDetail()
+    detail.initDefaults()
+    detail.ProjectName = projectName
+    return detail
+  }
 
   test('useFaiViewModelClass 在 Strict Effects 演练中不应清空 bridge', async () => {
     const appService = {
@@ -202,6 +209,49 @@ describe('FaiViewModelClass', () => {
     expect((vm.bill as any).DocumentStatus).toBe(DocumentStatus.已审批)
     expect((toast.dismiss as any).mock.invocationCallOrder[0]).toBeLessThan((assignMock as any).mock.invocationCallOrder[0])
     expect(assignMock).toHaveBeenCalledWith(expect.stringContaining('billId=20'))
+  })
+
+  test('删除中间明细后审批不应把已删除明细带回保存快照', async () => {
+    vi.resetModules()
+    const { FaiViewModel } = await import('./FaiViewModelClass')
+
+    const save = vi.fn(async (_payload: any) => ({ id: 88, aggregate: null }))
+    const approve = vi.fn(async () => ({ success: true, message: 'ok', ncrHint: false }))
+    const appService = {
+      save,
+      approve,
+      unapprove: vi.fn(),
+      delete: vi.fn(),
+      fetchById: vi.fn(),
+      executeScan: vi.fn(),
+      createDraftByDailyPlanDetailId: vi.fn(),
+    } as unknown as FirstInspectionApplicationService
+
+    const vm = new FaiViewModel(appService)
+    vm.required.checkEmptyAndFocus = vi.fn(() => ({ hasEmpty: false, emptyKeys: [] }))
+    ;(appService as any).fetchById = vi.fn(async () => ({ document: vm.bill, details: vm.details }))
+    ;(vm.bill as any).Code = 'FAI-DEL-001'
+    ;(vm.bill as any).DocumentStatus = DocumentStatus.未审批
+    vm.details = [createDetail('保留A'), createDetail('删除B'), createDetail('保留C')] as any
+
+    const deletedKey = vm.getDetailKey(vm.details[1])
+    vm.removeDetailByKey(deletedKey)
+    const ok = await vm.handleApprove()
+
+    expect(ok).toBe(true)
+    expect(vm.details.map((d) => d.ProjectName)).toEqual(['保留A', '保留C'])
+    expect(save).toHaveBeenCalledWith(expect.objectContaining({
+      details: expect.arrayContaining([
+        expect.objectContaining({ ProjectName: '保留A' }),
+        expect.objectContaining({ ProjectName: '保留C' }),
+      ]),
+    }))
+    expect(save.mock.calls[0]?.[0]?.details.map((d: any) => d.ProjectName)).toEqual(['保留A', '保留C'])
+    expect(approve).toHaveBeenCalledWith(88, expect.objectContaining({
+      details: expect.not.arrayContaining([
+        expect.objectContaining({ ProjectName: '删除B' }),
+      ]),
+    }))
   })
 
   test('processScanCode 在草稿未携带 id 时不应沿用旧单据 id 回刷', async () => {

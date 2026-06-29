@@ -194,13 +194,13 @@ function FqcBody({ rowGap, initialScanCode }: { rowGap: number; initialScanCode?
     .join(' ')
 
   const handleRemoveDetailAt = useCallback(
-    (rowIndex: number) => vm.removeDetailAt(rowIndex),
+    (detailKey: string) => vm.removeDetailByKey(detailKey),
     [vm],
   )
 
   const handleSetMeasureAtRow = useCallback(
-    (rowIndex: number, measureIndex: number, v: string) =>
-      vm.setMeasureAtRow(rowIndex, measureIndex, v),
+    (detailKey: string, measureIndex: number, v: string) =>
+      vm.setMeasureByDetailKey(detailKey, measureIndex, v),
     [vm],
   )
 
@@ -259,6 +259,7 @@ function FqcBody({ rowGap, initialScanCode }: { rowGap: number; initialScanCode?
             disableRemoveDetail={vm.disableRemoveDetail}
             parseMeasureFrequency={vm.parseMeasureFrequency}
             registerRequired={vm.registerRequired}
+            getDetailKey={(detail) => vm.getDetailKey(detail)}
             onRemoveDetailAt={handleRemoveDetailAt}
             onSetMeasureAtRow={handleSetMeasureAtRow}
           />
@@ -296,6 +297,7 @@ const FqcDetailsSection = memo(function FqcDetailsSection({
   disableRemoveDetail,
   parseMeasureFrequency,
   registerRequired,
+  getDetailKey,
   onRemoveDetailAt,
   onSetMeasureAtRow,
 }: {
@@ -305,15 +307,17 @@ const FqcDetailsSection = memo(function FqcDetailsSection({
   disableRemoveDetail: boolean
   parseMeasureFrequency: (freq: unknown) => number
   registerRequired: (key: string, registration: RequiredFieldRegistration<unknown>) => () => void
-  onRemoveDetailAt: (rowIndex: number) => void
-  onSetMeasureAtRow: (rowIndex: number, measureIndex: number, v: string) => void
+  getDetailKey: (detail: any) => string
+  onRemoveDetailAt: (detailKey: string) => void
+  onSetMeasureAtRow: (detailKey: string, measureIndex: number, v: string) => void
 }) {
   return (
     <DetailsCardList
       items={details}
-      getKey={(_, index) => index}
+      getKey={(item) => getDetailKey(item)}
       itemClassName={itemClassName}
       renderItem={({ item, index }) => {
+        const detailKey = getDetailKey(item)
         const enabledCount = parseMeasureFrequency((item as any).Frequency)
         const requireAtLeastOneMeasure = isEmptyMeasureFrequency((item as any).Frequency)
         return (
@@ -322,7 +326,7 @@ const FqcDetailsSection = memo(function FqcDetailsSection({
               <div className="text-[14px] font-medium">{(item as any).ProjectName}</div>
               <CloseIconButton
                 ariaLabel="删除明细"
-                onClick={() => onRemoveDetailAt(index)}
+                onClick={() => onRemoveDetailAt(detailKey)}
                 disabled={disableRemoveDetail}
               />
             </div>
@@ -394,7 +398,7 @@ const FqcDetailsSection = memo(function FqcDetailsSection({
                   key={i}
                   value={toDisplayStr(s)}
                   // 实测项仅在失焦提交：避免移动端每次按键都触发整页刷新导致输入卡顿
-                  onChange={(nv) => onSetMeasureAtRow(index, i, nv)}
+                  onChange={(nv) => onSetMeasureAtRow(detailKey, i, nv)}
                   disabled={i >= enabledCount || disableDetailEdit}
                   className="text-right"
                   style={{ height: '25px', minHeight: '25px', paddingInline: '4px' }}
@@ -403,6 +407,7 @@ const FqcDetailsSection = memo(function FqcDetailsSection({
               ))}
             </div>
             <MeasureRequiredRegistrar
+              rowKey={detailKey}
               rowIndex={index}
               enabledCount={enabledCount}
               requireAtLeastOneMeasure={requireAtLeastOneMeasure}
