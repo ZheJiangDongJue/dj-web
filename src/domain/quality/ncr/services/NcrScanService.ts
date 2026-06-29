@@ -118,8 +118,8 @@
  *
  * 通过“不合格返工单条码（FGD-*）”继续生成/打开下游 NCR 的命令。
  * @remarks
- * - 上游入口为不合格返工单（FGD-*），后续逻辑需先定位其下游流程卡与当前工序明细；\\n
- * - 实际的生成/打开由 Application 层通过 FlowScanApi + NCR 草稿接口完成。\\n
+ * - 上游入口为不合格返工单（FGD-*），后续逻辑由 Application 层调用后端专用接口向下查找不合格来源单据；\\n
+ * - 领域层只负责识别扫码文本，不承担数据库或流程卡查询。\\n
  *
  */
 export type CreateDefectiveReworkOrderByDefectiveReworkOrderScanCodeCommand = {

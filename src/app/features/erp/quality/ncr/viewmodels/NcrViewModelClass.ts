@@ -407,7 +407,8 @@ export class NcrViewModel extends QualityDocumentBase<DefectiveReworkOrderDocume
       onAfterSave: async (id) => {
         const n = typeof id === 'number' ? id : Number(id)
         if (Number.isFinite(n) && n > 0) {
-          await this.loadServerPhotoEvidence(n)
+          // 审批/保存后的照片证据补拉不应阻塞主流程；改为后台刷新，避免“审批中”提示被长请求拖住。
+          void this.loadServerPhotoEvidence(n)
         }
       },
       // 刷新后确保界面与服务端同步，并补齐显示字段

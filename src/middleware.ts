@@ -236,6 +236,6 @@ export function middleware(req: NextRequest) {
 export const config = {
   matcher: [
     // 参考：使用负向前瞻排除若干前缀/扩展名
-    '/((?!api|_next/static|_next/image|favicon.ico|assets/|.*\\.(?:svg|png|jpg|jpeg|gif|ico|webp|css|js|map)$).*)',
+    '/((?!api|_next/static|_next/image|favicon.ico|assets/|fonts/|.*\\.(?:svg|png|jpg|jpeg|gif|ico|webp|css|js|map|woff|woff2|ttf|otf|eot)$).*)',
   ],
 };

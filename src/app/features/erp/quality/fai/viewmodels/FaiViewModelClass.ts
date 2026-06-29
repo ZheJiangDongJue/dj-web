@@ -397,10 +397,10 @@ export class FaiViewModel extends QualityDocumentBase<FirstInspectionDocument, F
    * 设置指定行的实测值。
    *
    */
-  public setMeasureAtRow(rowIndex: number, measureIndex: number, v: number | ''): void {
+  public setMeasureAtRow(rowIndex: number, measureIndex: number, v: string | number | ''): void {
     if (this.disableDetailEdit) return
     const key = `MeasuredRecord${measureIndex + 1}` as keyof FirstInspectionDetail
-    const nextValue = v === '' ? '' : String(v)
+    const nextValue = String(v ?? '')
     const list = Array.isArray(this.details) ? this.details : []
     const current = list[rowIndex] as any
     if (!current) return
@@ -684,6 +684,19 @@ export class FaiViewModel extends QualityDocumentBase<FirstInspectionDocument, F
       () => super.handleApprove(),
       { loadingMessage: '审批中…' },
     )
+
+    // 等待 busy 收尾完成后再进入 NCR 引导页，避免页面跳转打断 toast 清理流程。
+    if (result) {
+      const needNcr = this.lastApproveResult?.ncrHint ?? this.shouldHintNcrFromSnapshot()
+      if (needNcr) {
+        const billId = this.getCurrentBillId()
+        if (billId > 0) {
+          setLastFaiBillIdToStorage(billId)
+          this.redirectToNcrPrompt(billId)
+        }
+      }
+    }
+
     return result ?? false
   }
 
@@ -754,7 +767,6 @@ export class FaiViewModel extends QualityDocumentBase<FirstInspectionDocument, F
     const needNcr = this.lastApproveResult?.ncrHint ?? this.shouldHintNcrFromSnapshot()
     if (needNcr && billId > 0) {
       setLastFaiBillIdToStorage(billId)
-      this.redirectToNcrPrompt(billId)
       return
     }
     // 审批成功后回拉单据：用于获取后端在审批后生成/更新的字段（例如单据编号 Code）

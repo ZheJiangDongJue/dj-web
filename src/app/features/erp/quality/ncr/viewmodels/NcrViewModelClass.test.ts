@@ -2,6 +2,8 @@ import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest'
 
 vi.mock('sonner', () => ({
   toast: {
+    loading: vi.fn(() => 'loading-id'),
+    dismiss: vi.fn(),
     success: vi.fn(),
     warning: vi.fn(),
     error: vi.fn(),
@@ -209,5 +211,35 @@ describe('NcrViewModelClass', () => {
       inspectorEmployeeId: 7,
     })
     expect((vm.bill as any).ReworkTypeofWorkid).toBe(22)
+  })
+
+  test('handleApprove 不应等待照片证据补拉完成后才结束', async () => {
+    const { toast } = await import('sonner')
+    const { NcrViewModel } = await import('./NcrViewModelClass')
+
+    const appService = {
+      save: vi.fn(async () => ({ id: 33, message: 'ok' })),
+      approve: vi.fn(async () => ({ success: true, message: 'ok' })),
+      unapprove: vi.fn(async () => ({ success: true, message: 'ok' })),
+      delete: vi.fn(async () => ({ success: true, message: 'ok' })),
+      fetchById: vi.fn(async () => ({
+        document: { id: 33, status: 0, Employeeid: 7, TypeofWorkid: 11 } as any,
+        details: [{ Adversesituation: '缺陷' } as any],
+      })),
+      reloadDraftByFlowDetail: vi.fn(),
+    } as any
+
+    const vm = new NcrViewModel(appService)
+    ;(vm.bill as any).Employeeid = 7
+    ;(vm.bill as any).TypeofWorkid = 11
+    vm.details = [{ Adversesituation: '缺陷' } as any]
+    vm.serverPhotoEvidence = [{ id: 'photo-1' } as any]
+    ;(vm as any).loadServerPhotoEvidence = vi.fn(() => new Promise(() => undefined))
+
+    const ok = await vm.handleApprove()
+
+    expect(ok).toBe(true)
+    expect((vm as any).loadServerPhotoEvidence).toHaveBeenCalledWith(33)
+    expect((toast.dismiss as any)).toHaveBeenCalled()
   })
 })

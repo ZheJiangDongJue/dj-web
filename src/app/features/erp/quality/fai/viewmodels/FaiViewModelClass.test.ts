@@ -4,6 +4,8 @@ import { DocumentStatus } from '@/types/erp-db.generated'
 
 vi.mock('sonner', () => ({
   toast: {
+    loading: vi.fn(() => 'loading-id'),
+    dismiss: vi.fn(),
     success: vi.fn(),
     warning: vi.fn(),
     error: vi.fn(),
@@ -173,6 +175,33 @@ describe('FaiViewModelClass', () => {
 
     expect(ok).toBe(true)
     expect((vm.bill as any).DocumentStatus).toBe(DocumentStatus.已审批)
+  })
+
+  test('handleApprove 触发 NCR 引导时应先收尾 loading 再跳转', async () => {
+    vi.resetModules()
+    const { toast } = await import('sonner')
+    const { FaiViewModel } = await import('./FaiViewModelClass')
+
+    const appService = {
+      save: vi.fn(async () => ({ id: 20, aggregate: null })),
+      approve: vi.fn(async () => ({ success: true, message: 'ok', ncrHint: true })),
+    } as unknown as FirstInspectionApplicationService
+
+    const vm = new FaiViewModel(appService)
+    vm.required.checkEmptyAndFocus = vi.fn(() => ({ hasEmpty: false }))
+    ;(vm.bill as any).Code = 'FAI-002'
+    ;(vm.bill as any).DocumentStatus = DocumentStatus.未审批
+    ;(vm.bill as any).CheckResult = 4
+    ;(vm.bill as any).NotPassBQty = 1
+    const assignMock = vi.fn()
+    ;(globalThis as any).window = { location: { origin: 'http://localhost', assign: assignMock } }
+
+    const ok = await vm.handleApprove()
+
+    expect(ok).toBe(true)
+    expect((vm.bill as any).DocumentStatus).toBe(DocumentStatus.已审批)
+    expect((toast.dismiss as any).mock.invocationCallOrder[0]).toBeLessThan((assignMock as any).mock.invocationCallOrder[0])
+    expect(assignMock).toHaveBeenCalledWith(expect.stringContaining('billId=20'))
   })
 
   test('processScanCode 在草稿未携带 id 时不应沿用旧单据 id 回刷', async () => {

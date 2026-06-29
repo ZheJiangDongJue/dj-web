@@ -100,6 +100,15 @@ export interface DocumentActions {
    *
    */
   setId: (id: string | number | null) => void;
+  /**
+   *
+   * 强制同步加载态。
+   * @remarks
+   * - 主要供外层动作壳在请求超时或异常卡住时释放按钮门闩；
+   * - 常规保存/审批/反审批/删除流程仍由各动作自身的 finally 自动复位。
+   *
+   */
+  setLoading: (loading: boolean) => void;
 }
 
 /**
@@ -180,5 +189,9 @@ export function useDocumentActions(options: UseDocumentActionsOptions = {}): Doc
     setId(nextId);
   }, []);
 
-  return { create, save, approve, unapprove, remove, state, setId: syncId };
+  const syncLoading = useCallback((nextLoading: boolean) => {
+    setLoading(!!nextLoading);
+  }, []);
+
+  return { create, save, approve, unapprove, remove, state, setId: syncId, setLoading: syncLoading };
 }

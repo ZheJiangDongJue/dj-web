@@ -62,6 +62,17 @@ export interface DefectiveReworkOrderDraftByInspectionInput {
   inspectionDocumentId: number
 }
 
+export interface DefectiveReworkOrderDraftByDefectiveReworkOrderInput {
+  dbName?: string
+  user: UserInfo
+  /** 不合格返工单主键；与 scanForCode 二选一，优先级高于 scanForCode */
+  defectiveReworkOrderDocumentId?: number
+  /** 不合格返工单扫码码（DefectiveReworkOrderDocument.CodeForScan，如 FGD-*） */
+  scanForCode?: string
+  /** 可选检验员；有效时写入新返工单草稿 Employeeid */
+  inspectorEmployeeid?: number
+}
+
 export interface SaveDefectiveReworkOrderWithFilesInput {
   dbName?: string
   user: UserInfo
@@ -562,11 +573,38 @@ export async function GetDefectiveReworkOrderDraftByInspection<
   )
 }
 
+/**
+ *
+ * 根据“不合格返工单”生成其下游新 NCR 草稿（不落库）。
+ * 对应 C#: [HttpPost] GetDefectiveReworkOrderDraftByDefectiveReworkOrder([FromBody] DefectiveReworkOrderDraftByDefectiveReworkOrderRequest request)
+ *
+ */
+export async function GetDefectiveReworkOrderDraftByDefectiveReworkOrder<
+  TDoc = unknown,
+  TDetail = unknown,
+  TCheckDetail = unknown,
+>(
+  payload: DefectiveReworkOrderDraftByDefectiveReworkOrderInput,
+): Promise<DefectiveReworkOrderDraft<TDoc, TDetail, TCheckDetail>> {
+  const body = {
+    DbName: payload.dbName ?? DEFAULT_DB_NAME,
+    User: payload.user,
+    DefectiveReworkOrderDocumentId: payload.defectiveReworkOrderDocumentId ?? 0,
+    ScanForCode: payload.scanForCode ?? '',
+    InspectorEmployeeid: payload.inspectorEmployeeid ?? 0,
+  }
+  return _client.callActionRaw<DefectiveReworkOrderDraft<TDoc, TDetail, TCheckDetail>>(
+    'GetDefectiveReworkOrderDraftByDefectiveReworkOrder',
+    { method: 'POST', body } as ActionCallOptions,
+  )
+}
+
 // 默认导出集合（保持方法名一致，便于替换调用方）
 export const QualityApi = {
   GetFinalInspectionDraftByDefectiveReworkOrder,
   GetFirstInspectionDraftByDefectiveReworkOrder,
   GetDefectiveReworkOrderDraftByInspection,
+  GetDefectiveReworkOrderDraftByDefectiveReworkOrder,
   GetLatestDefectiveReworkOrderIdByDailyPlanScanCode,
   GetDefectiveReworkOrderDraftByDailyPlanScanCode,
   GetDefectiveReworkOrderDraftByFlowDetail,

@@ -1,0 +1,21 @@
+@font-face {
+  font-family: 'MeasureRecordPassMark';
+  src: url('/fonts/measure-record-mark/measure-record-pass-mark.woff2') format('woff2');
+  font-display: swap;
+  font-style: normal;
+  font-weight: 400;
+  unicode-range: U+221A;
+}
+
+.root {
+  position: relative;
+  display: block;
+  width: 100%;
+}
+
+.markInput {
+  font-family: "MeasureRecordPassMark", "KaiTi", "STKaiti", "Kaiti SC", "楷体", "SimKai", "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+  font-size: 1.18em;
+  font-weight: 400;
+  line-height: 1;
+}

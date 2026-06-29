@@ -20,6 +20,7 @@ import { DocumentStatus } from '@/types/erp-db.generated'
 import { type RequiredFieldRegistration } from '@/lib/validation/requiredFieldManager'
 import { hasStatusFlag, documentStatusToText } from '../shared/helpers'
 import FlowDetailPickDialog from '../shared/FlowDetailPickDialog'
+import { MeasureRecordInput } from '../shared/MeasureRecordInput'
 import { MeasureRequiredRegistrar } from '../shared/MeasureRequiredRegistrar'
 import { QualityPageWarmupStrip, useQualityPageWarmup } from '../shared/pageWarmup'
 
@@ -198,7 +199,7 @@ function FqcBody({ rowGap, initialScanCode }: { rowGap: number; initialScanCode?
   )
 
   const handleSetMeasureAtRow = useCallback(
-    (rowIndex: number, measureIndex: number, v: number | '') =>
+    (rowIndex: number, measureIndex: number, v: string) =>
       vm.setMeasureAtRow(rowIndex, measureIndex, v),
     [vm],
   )
@@ -305,7 +306,7 @@ const FqcDetailsSection = memo(function FqcDetailsSection({
   parseMeasureFrequency: (freq: unknown) => number
   registerRequired: (key: string, registration: RequiredFieldRegistration<unknown>) => () => void
   onRemoveDetailAt: (rowIndex: number) => void
-  onSetMeasureAtRow: (rowIndex: number, measureIndex: number, v: number | '') => void
+  onSetMeasureAtRow: (rowIndex: number, measureIndex: number, v: string) => void
 }) {
   return (
     <DetailsCardList
@@ -389,9 +390,9 @@ const FqcDetailsSection = memo(function FqcDetailsSection({
                 (item as any).MeasuredRecord4,
                 (item as any).MeasuredRecord5,
               ].map((s, i) => (
-                <NumberInput
+                <MeasureRecordInput
                   key={i}
-                  value={toNumOrEmpty(s)}
+                  value={toDisplayStr(s)}
                   // 实测项仅在失焦提交：避免移动端每次按键都触发整页刷新导致输入卡顿
                   onChange={(nv) => onSetMeasureAtRow(index, i, nv)}
                   disabled={i >= enabledCount || disableDetailEdit}

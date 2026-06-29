@@ -19,6 +19,7 @@ vi.mock('@/lib/erp/quality-api', () => ({
     GetDefectiveReworkOrderDraftByDailyPlanScanCode: vi.fn(),
     GetDefectiveReworkOrderDraftByFlowDetail: vi.fn(),
     GetDefectiveReworkOrderDraftByInspection: vi.fn(),
+    GetDefectiveReworkOrderDraftByDefectiveReworkOrder: vi.fn(),
   },
 }))
 
@@ -1061,21 +1062,13 @@ describe('NcrApplicationService', () => {
     })
   })
 
-  it('executeScan: 返工单条码（FGD-*）走 FlowScan 并按 FlowDetail 生成 NCR', async () => {
+  it('executeScan: 返工单条码（FGD-*）直接按下游不合格流程单据生成 NCR 草稿', async () => {
     const { FlowScanApi } = await import('@/lib/erp/flow-scan-api')
     const { QualityApi } = await import('@/lib/erp/quality-api')
     const { NcrApplicationService } = await import('./NcrApplicationService')
 
     const flowScanMock = FlowScanApi.CheckDocumentState as unknown as Mock
-    flowScanMock.mockResolvedValueOnce({
-      success: true,
-      message: '',
-      data: {
-        Items: [{ Matched: true, FlowDetail: { TableName: 'ProcessAssemblyFlowDetail', id: 11 } }],
-      },
-    })
-
-    const createMock = (QualityApi as any).GetDefectiveReworkOrderDraftByFlowDetail as Mock
+    const createMock = (QualityApi as any).GetDefectiveReworkOrderDraftByDefectiveReworkOrder as Mock
     createMock.mockResolvedValueOnce(ncrDraftPack({ id: 0, Code: 'FGD-DRAFT' }, { message: 'm' }))
 
     const service = new NcrApplicationService({ delete: vi.fn() } as any)
@@ -1086,8 +1079,9 @@ describe('NcrApplicationService', () => {
       checkDetails: [],
       message: 'm',
     })
+    expect(flowScanMock).not.toHaveBeenCalled()
     expect(createMock).toHaveBeenCalledWith(
-      expect.objectContaining({ flowDetailTableName: 'ProcessAssemblyFlowDetail', flowDetailId: 11, inspectorEmployeeid: 0 }),
+      expect.objectContaining({ scanForCode: 'FGD-001', inspectorEmployeeid: 0 }),
     )
   })
 
@@ -1122,27 +1116,27 @@ describe('NcrApplicationService', () => {
     )
   })
 
-  it('executeScan: 返工单条码未找到下游流程卡/工序时返回错误提示', async () => {
-    const { FlowScanApi } = await import('@/lib/erp/flow-scan-api')
+  it('executeScan: 返工单条码未找到下游不合格流程单据时返回错误提示', async () => {
+    const { QualityApi } = await import('@/lib/erp/quality-api')
     const { NcrApplicationService } = await import('./NcrApplicationService')
 
-    const flowScanMock = FlowScanApi.CheckDocumentState as unknown as Mock
-    flowScanMock.mockResolvedValueOnce({ success: true, message: '未找到由该不合格返工单生成的流程卡', data: { Items: [] } })
+    const createMock = (QualityApi as any).GetDefectiveReworkOrderDraftByDefectiveReworkOrder as Mock
+    createMock.mockResolvedValueOnce({ success: false, message: '未找到可生成下游不合格返工单的流程单据' })
 
     const service = new NcrApplicationService({ delete: vi.fn() } as any)
     await expect(service.executeScan('FGD-404')).resolves.toEqual({
       type: 'ERROR',
       level: 'error',
-      message: '未找到由该不合格返工单生成的流程卡',
+      message: '未找到可生成下游不合格返工单的流程单据',
     })
   })
 
   it('executeScan: 返工单扫码查询异常时返回 error', async () => {
-    const { FlowScanApi } = await import('@/lib/erp/flow-scan-api')
+    const { QualityApi } = await import('@/lib/erp/quality-api')
     const { NcrApplicationService } = await import('./NcrApplicationService')
 
-    const flowScanMock = FlowScanApi.CheckDocumentState as unknown as Mock
-    flowScanMock.mockRejectedValueOnce(new Error('net'))
+    const createMock = (QualityApi as any).GetDefectiveReworkOrderDraftByDefectiveReworkOrder as Mock
+    createMock.mockRejectedValueOnce(new Error('net'))
 
     const service = new NcrApplicationService({ delete: vi.fn() } as any)
     await expect(service.executeScan('FGD-500')).resolves.toEqual({

@@ -11,6 +11,8 @@ import { setLastFqcBillIdToStorage } from '../../shared/helpers'
 
 vi.mock('sonner', () => ({
   toast: {
+    loading: vi.fn(() => 'loading-id'),
+    dismiss: vi.fn(),
     success: vi.fn(),
     warning: vi.fn(),
     error: vi.fn(),
@@ -138,6 +140,7 @@ describe('FqcViewModelClass', () => {
     ;(vm.bill as any).DocumentStatus = DocumentStatus.未审批
     const assignMock = vi.fn()
     ;(globalThis as any).window = { location: { origin: 'http://localhost', assign: assignMock } }
+    const { toast } = await import('sonner')
 
     const ok = await vm.handleApprove()
 
@@ -146,6 +149,7 @@ describe('FqcViewModelClass', () => {
     expect(appService.approve).toHaveBeenCalledWith(10, { bill: vm.bill, details: vm.details })
     expect(mockSetLastFqcBillIdToStorage).toHaveBeenCalledWith(10)
     expect(assignMock).toHaveBeenCalledWith(expect.stringContaining('billId=10'))
+    expect((toast.dismiss as any).mock.invocationCallOrder[0]).toBeLessThan((assignMock as any).mock.invocationCallOrder[0])
   })
 
   test('processScanCode 应用服务返回草稿时写入状态', async () => {
@@ -373,8 +377,10 @@ describe('FqcViewModelClass', () => {
   })
 
   test('handleApprove 失败时返回 false 并提示必填项', async () => {
+    const { toast } = await import('sonner')
+    const save = vi.fn(async () => ({ id: 0, aggregate: null }))
     const appService = createMockAppService({
-      save: vi.fn(async () => ({ id: 0, aggregate: null })),
+      save,
     })
     const vm = new FqcViewModel(appService)
     vm.required.checkEmptyAndFocus = vi.fn(() => ({ hasEmpty: true, firstEmptyKey: 'ChkBQty' }))
@@ -382,6 +388,9 @@ describe('FqcViewModelClass', () => {
     const ok = await vm.handleApprove()
 
     expect(ok).toBe(false)
+    expect(toast.warning).toHaveBeenCalledWith('请先填写：检验数')
+    expect(toast.loading).not.toHaveBeenCalled()
+    expect(save).not.toHaveBeenCalled()
   })
 
   test('tryOpenFinalInspectionByDailyPlanDetailId 调用应用服务生成草稿', async () => {

@@ -397,10 +397,10 @@ export class FqcViewModel extends QualityDocumentBase<FinalInspectionDocument, F
    * 设置指定行的实测值。
    *
    */
-  public setMeasureAtRow(rowIndex: number, measureIndex: number, v: number | ''): void {
+  public setMeasureAtRow(rowIndex: number, measureIndex: number, v: string | number | ''): void {
     if (this.disableDetailEdit) return
     const key = `MeasuredRecord${measureIndex + 1}` as keyof FinalInspectionDetail
-    const nextValue = v === '' ? '' : String(v)
+    const nextValue = String(v ?? '')
     const list = Array.isArray(this.details) ? this.details : []
     const current = list[rowIndex] as any
     if (!current) return
@@ -682,14 +682,21 @@ export class FqcViewModel extends QualityDocumentBase<FinalInspectionDocument, F
   public override async handleApprove(): Promise<boolean> {
     const result = await this.runBusyAction(
       '审批',
-      async () => {
-        const ok = await super.handleApprove()
-        if (!ok) return false
-        await this.handleAfterApprove(this.getCurrentBillId() ?? 0)
-        return true
-      },
+      () => super.handleApprove(),
       { loadingMessage: '审批中…' },
     )
+
+    // 等待 runBusyAction 完成收尾后再执行 NCR 引导跳转，避免 loading toast 被页面跳转打断后残留。
+    if (result) {
+      const needNcr = this.lastApproveResult?.ncrHint ?? this.shouldHintNcrFromSnapshot()
+      if (needNcr) {
+        const billId = this.getCurrentBillId()
+        if (billId > 0) {
+          this.redirectToNcrPrompt(billId)
+        }
+      }
+    }
+
     return result ?? false
   }
 
@@ -759,7 +766,6 @@ export class FqcViewModel extends QualityDocumentBase<FinalInspectionDocument, F
     const needNcr = this.lastApproveResult?.ncrHint ?? this.shouldHintNcrFromSnapshot()
     if (needNcr && billId > 0) {
       setLastFqcBillIdToStorage(billId)
-      this.redirectToNcrPrompt(billId)
       return
     }
     this.emit()

@@ -23,6 +23,41 @@ type ScanListenerGlobals = {
 }
 
 const GLOBAL_SCAN_LISTENER_KEY = '__dj_scan_listener_globals__'
+const DEFAULT_BUSY_ACTION_TIMEOUT_MS = 45_000
+let busyActionToastSeq = 0
+
+/**
+ *
+ * 通用耗时动作超时错误。
+ * @remarks
+ * - 用于区分真正的业务异常与前端兜底超时；
+ * - 超时时外层会释放 UI 门闩，并提示用户刷新单据确认服务端最终状态。
+ *
+ */
+class BusyActionTimeoutError extends Error {
+  public constructor(
+    public readonly actionName: string,
+    public readonly timeoutMs: number,
+  ) {
+    super(`${actionName}处理超时`)
+    this.name = 'BusyActionTimeoutError'
+  }
+}
+
+function isBusyActionTimeoutError(error: unknown): error is BusyActionTimeoutError {
+  return error instanceof BusyActionTimeoutError
+}
+
+function normalizeBusyActionTimeoutMs(timeoutMs: number | undefined): number {
+  if (timeoutMs == null) return DEFAULT_BUSY_ACTION_TIMEOUT_MS
+  if (!Number.isFinite(timeoutMs)) return DEFAULT_BUSY_ACTION_TIMEOUT_MS
+  return Math.max(0, Math.floor(timeoutMs))
+}
+
+function nextBusyActionToastId(): string {
+  busyActionToastSeq = (busyActionToastSeq % Number.MAX_SAFE_INTEGER) + 1
+  return `dj-document-busy-${busyActionToastSeq}`
+}
 
 function getScanListenerHost(): any {
   if (typeof window !== 'undefined') return window as any
@@ -334,11 +369,12 @@ export class DocumentBase<TDocument, TDetail> implements DocumentBaseLike<TDocum
    * - 进入时：actionBusy=true，busyActionName=actionName，emit 通知订阅者；
    * - 可选显示 sonner 的 loading toast；操作期间通知用户“正在处理”；
    * - 结束（无论成功/失败）：dismiss loading toast，actionBusy=false，busyActionName=null，emit；
+   * - 默认 45 秒超时兜底，避免后端连接、认证刷新或页面跳转异常导致按钮永久禁用；
    * - 默认开启“跳过重复点击”：若已有 busy 操作进行，直接返回 undefined，避免并发请求；
-   * - 不会捕获/吞掉异常：仍然由调用方处理（与原 handleApprove 等流程保持一致）。
+   * - 除前端兜底超时外，不会捕获/吞掉异常：仍然由调用方处理。
    * @param actionName 操作名（例如 "审批"/"反审批"/"删除"）。
    * @param task 实际的异步任务。
-   * @param opts 可选参数：自定义 loading 文本/是否显示 toast/是否跳过 busy。
+   * @param opts 可选参数：自定义 loading 文本/是否显示 toast/是否跳过 busy/超时时间。
    * @returns 任务的返回值；若因 busy 跳过则返回 undefined。
    *
    */
@@ -349,6 +385,7 @@ export class DocumentBase<TDocument, TDetail> implements DocumentBaseLike<TDocum
       loadingMessage?: string
       showLoadingToast?: boolean
       skipIfBusy?: boolean
+      timeoutMs?: number
     },
   ): Promise<T | undefined> {
     const skipIfBusy = opts?.skipIfBusy !== false
@@ -361,28 +398,77 @@ export class DocumentBase<TDocument, TDetail> implements DocumentBaseLike<TDocum
 
     const showLoadingToast = opts?.showLoadingToast !== false
     let loadingToastId: string | number | undefined
-    if (showLoadingToast) {
+    const forcedLoadingToastId = showLoadingToast ? nextBusyActionToastId() : undefined
+    let loadingToastHandle: ReturnType<typeof setTimeout> | null = null
+    let taskSettled = false
+    const showDeferredLoadingToast = () => {
+      loadingToastHandle = null
+      if (!showLoadingToast || taskSettled) return
       try {
         // 兼容测试环境（mock 的 toast 没有 loading），动态访问以避免抛错。
-        const loading = (toast as unknown as { loading?: (msg: string) => string | number }).loading
+        const loading = (toast as unknown as {
+          loading?: (msg: string, data?: { id?: string | number }) => string | number
+        }).loading
         if (typeof loading === 'function') {
-          loadingToastId = loading(opts?.loadingMessage ?? `${actionName}中…`)
+          loadingToastId = loading(opts?.loadingMessage ?? `${actionName}中…`, { id: forcedLoadingToastId })
         }
       } catch {
         // ignore
       }
     }
 
+    const timeoutMs = normalizeBusyActionTimeoutMs(opts?.timeoutMs)
+    let timeoutHandle: ReturnType<typeof setTimeout> | null = null
+    let taskPromise: Promise<T> | null = null
+
     try {
-      return await task()
+      taskPromise = task()
+      if (showLoadingToast) {
+        // 延后一拍再显示 loading：必填校验/状态锁等同步早退不应产生“审批中”提示。
+        loadingToastHandle = setTimeout(showDeferredLoadingToast, 0)
+      }
+      if (timeoutMs <= 0) return await taskPromise
+
+      return await Promise.race<T>([
+        taskPromise,
+        new Promise<never>((_, reject) => {
+          timeoutHandle = setTimeout(
+            () => reject(new BusyActionTimeoutError(actionName, timeoutMs)),
+            timeoutMs,
+          )
+        }),
+      ])
+    } catch (error) {
+      if (!isBusyActionTimeoutError(error)) throw error
+
+      // 兜底超时后原任务可能仍在后台完成；这里先吞掉后续 reject，避免未处理 Promise。
+      try { void taskPromise?.catch(() => undefined) } catch { }
+      try {
+        toast.error(`${error.actionName}处理超时，请刷新单据确认服务端状态后重试`)
+      } catch {
+        // ignore
+      }
+      return undefined
     } finally {
-      if (loadingToastId != null) {
+      taskSettled = true
+      if (timeoutHandle) clearTimeout(timeoutHandle)
+      if (loadingToastHandle) clearTimeout(loadingToastHandle)
+      if (loadingToastId != null || forcedLoadingToastId != null) {
         try {
           const dismiss = (toast as unknown as { dismiss?: (id?: string | number) => void }).dismiss
-          if (typeof dismiss === 'function') dismiss(loadingToastId)
+          if (typeof dismiss === 'function') {
+            const ids = [loadingToastId, forcedLoadingToastId]
+              .filter((id): id is string | number => id != null)
+            for (const id of [...new Set(ids)]) dismiss(id)
+          }
         } catch {
           // ignore
         }
+      }
+      try {
+        this.bridge?.docActions.setLoading(false)
+      } catch {
+        // 兜底释放失败不应阻断 actionBusy 复位
       }
       this.actionBusy = false
       this.busyActionName = null

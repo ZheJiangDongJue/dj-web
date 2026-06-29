@@ -81,5 +81,6 @@ export function createDocumentActions(options: UseDocumentActionsOptions & { onS
     remove,
     state,
     setId,
+    setLoading,
   }
 }

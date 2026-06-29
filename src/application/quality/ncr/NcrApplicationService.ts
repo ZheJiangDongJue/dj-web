@@ -805,7 +805,10 @@ export type NcrScanFlowDetailCandidate = FlowDetailCandidate
 
   /**
    *
-   * 用例：不合格返工单扫码生成不合格返工单（继续下游 NCR，支持“多条当前工序明细”时先返回候选列表）。
+   * 用例：不合格返工单扫码生成下游不合格返工单草稿。
+   * @remarks
+   * - 默认直接走后端专用接口，由后端从该返工单生成的返工流程卡继续向下寻找不合格来源单据；\n
+   * - 保留 pickedFlowDetail 兼容旧的“先选工序再生成”调用，但正常 FGD 扫码不再依赖 FlowScanApi。
    *
    */
   public async executeDefectiveReworkOrderScanCreate(
@@ -815,20 +818,44 @@ export type NcrScanFlowDetailCandidate = FlowDetailCandidate
       readonly pickedFlowDetail?: { tableName: string; id: number } | null
     },
   ): Promise<NcrScanExecuteResult> {
-    return this.toNcrScanResult(
-      await this.createScanFlow('flow-detail').run({
-        scanForCode,
-        source: {
-          sourceType: FlowScanSourceType.DefectiveReworkOrderDocument,
-          normalizeCode: (raw) => raw.match(/FGD-\d{12}/i)?.[0] ?? raw,
-          logTag: '[NCR]',
-        },
-        pickedFlowDetail: options?.pickedFlowDetail ?? null,
-        context: {
-          inspectorEmployeeId: options?.inspectorEmployeeId ?? 0,
-        },
-      }),
-    )
+    const picked = options?.pickedFlowDetail ?? null
+    if (picked) {
+      return this.toNcrScanResult(
+        await this.createScanFlow('flow-detail').run({
+          scanForCode,
+          source: {
+            sourceType: FlowScanSourceType.DefectiveReworkOrderDocument,
+            normalizeCode: normalizeDefectiveReworkOrderScanCode,
+            logTag: '[NCR]',
+          },
+          pickedFlowDetail: picked,
+          context: {
+            inspectorEmployeeId: options?.inspectorEmployeeId ?? 0,
+          },
+        }),
+      )
+    }
+
+    const scan = normalizeDefectiveReworkOrderScanCode(scanForCode)
+    if (!scan) return { type: 'ERROR', level: 'warning', message: '扫描内容为空' }
+
+    try {
+      const pack = await QualityApi.GetDefectiveReworkOrderDraftByDefectiveReworkOrder<
+        DefectiveReworkOrderDocument,
+        DefectiveReworkOrderDetail,
+        DefectiveReworkOrderCheckDetail
+      >({
+        dbName: DEFAULT_DB_NAME,
+        user: getErpUserFromStorage(),
+        scanForCode: scan,
+        inspectorEmployeeid: options?.inspectorEmployeeId ?? 0,
+      })
+
+      return this.toNcrDraftLoadedResult(pack, '未能生成下游不合格返工单')
+    } catch (error) {
+      console.error('[NCR] 扫不合格返工单条码生成下游不合格返工单草稿失败:', error)
+      return { type: 'ERROR', level: 'error', message: '扫码处理失败，请稍后重试' }
+    }
   }
 
   /**
@@ -1252,6 +1279,27 @@ export type NcrScanFlowDetailCandidate = FlowDetailCandidate
  return {}
  }
  }
+
+/**
+ *
+ * 规范化不合格返工单扫码码。
+ * @remarks
+ * - 兼容扫码枪可能附带前后缀的文本：优先提取常见 FGD 编码；\n
+ * - 若未命中标准格式，则保留清理空白后的原文，避免挡住测试环境或历史短码。
+ *
+ */
+function normalizeDefectiveReworkOrderScanCode(raw: string): string {
+  const text = String(raw ?? '').trim()
+  if (!text) return ''
+
+  const compact = text.match(/FGD-\d{12}/i)?.[0]
+  if (compact) return compact
+
+  const dashed = text.match(/FGD-\d{6}-\d{4}/i)?.[0]
+  if (dashed) return dashed
+
+  return text
+}
 
 /**
  *
