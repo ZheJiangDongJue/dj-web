@@ -61,7 +61,8 @@ export default async function LoginPage({
   // 因此此处只进行可见性判断，不在页面内透传 Set-Cookie；由 middleware 统一处理跳转与刷新。
   const store = await cookies()
   const rt = store.get('refreshToken')?.value
-  const lastApp = normalizeApp(store.get('dj_last_app')?.value)
+  const lastAppCookie = store.get('dj_last_app')?.value
+  const lastApp = normalizeApp(lastAppCookie)
   const base = resolveBase(lastApp)
 
   // 先解析异步 searchParams，再安全读取 next / from / force
@@ -130,7 +131,7 @@ export default async function LoginPage({
                 className="sr-only"
               />
 
-              <LoginPanel app={lastApp} />
+              <LoginPanel app={lastAppCookie ? lastApp : undefined} />
             </div>
           </div>
         </section>

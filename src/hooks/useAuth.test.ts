@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 
+import { LOGIN_CREDENTIAL_STORAGE_KEY } from '@/lib/auth/login-credential-storage'
 import { createAuthController, clearAuthStorage, DEFAULT_AUTH_STORAGE_KEYS } from './useAuth'
 
 function createTokenStorageMock() {
@@ -35,6 +36,20 @@ describe('clearAuthStorage', () => {
 
     expect(storage.removeItem).toHaveBeenCalledTimes(DEFAULT_AUTH_STORAGE_KEYS.length)
     expect(removed).toEqual(Array.from(DEFAULT_AUTH_STORAGE_KEYS))
+  })
+
+  it('不会清理登录页保存的账号密码凭据', () => {
+    const removed: string[] = []
+    const storage = {
+      getItem: vi.fn(() => null),
+      removeItem: vi.fn((k: string) => {
+        removed.push(k)
+      }),
+    }
+
+    clearAuthStorage(storage)
+
+    expect(removed).not.toContain(LOGIN_CREDENTIAL_STORAGE_KEY)
   })
 })
 
