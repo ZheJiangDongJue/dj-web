@@ -213,6 +213,49 @@ describe('NcrViewModelClass', () => {
     expect((vm.bill as any).ReworkTypeofWorkid).toBe(22)
   })
 
+  test('返工工序提示：草稿单据头直接带流程卡明细时标记为红色提示状态', async () => {
+    const { fetchLookup } = await import('@/lib/erp/lookup-core')
+    const { NcrViewModel } = await import('./NcrViewModelClass')
+
+    ;(fetchLookup as any).mockImplementation(async (table: string) => {
+      if (table === 'ProcessAssemblyFlowDetail') {
+        return [{ id: 11, StepDocumentid: null, StepDocumentType: '' }]
+      }
+      return []
+    })
+
+    const vm = new NcrViewModel({
+      delete: vi.fn(async () => ({ success: true, message: '' })),
+      fetchById: vi.fn(async () => ({ document: null, details: [] })),
+    } as any)
+
+    vm.bill = {
+      ...(vm.bill as any),
+      CreateByDocumentType: 'AssemblyProcessReceiveDocument',
+      CreateByDocumentid: 9,
+      CreateByDetailType: 'ProcessAssemblyFlowDetail',
+      CreateByDetailid: 11,
+    } as any
+
+    await (vm as any).refreshReworkFlowDetailRequiredState()
+
+    expect(vm.isReworkFlowDetailRequired).toBe(true)
+  })
+
+  test('返工工序提示：新建单据会清空红色提示状态', async () => {
+    const { NcrViewModel } = await import('./NcrViewModelClass')
+
+    const vm = new NcrViewModel({
+      delete: vi.fn(async () => ({ success: true, message: '' })),
+      fetchById: vi.fn(async () => ({ document: null, details: [] })),
+    } as any)
+
+    vm.isReworkFlowDetailRequired = true
+    vm.createNewBill()
+
+    expect(vm.isReworkFlowDetailRequired).toBe(false)
+  })
+
   test('handleApprove 不应等待照片证据补拉完成后才结束', async () => {
     const { toast } = await import('sonner')
     const { NcrViewModel } = await import('./NcrViewModelClass')

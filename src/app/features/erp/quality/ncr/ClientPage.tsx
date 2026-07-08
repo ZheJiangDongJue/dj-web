@@ -571,6 +571,7 @@ export default function ClientPage({
             toNonNegInt={vm.toNonNegInt}
             onReworkFlowDetailChange={(field, value) => { void vm.handleReworkFlowDetailChange(field, value) }}
             sourceDraftReloadBusy={vm.sourceDraftReloadBusy}
+            isReworkFlowDetailRequired={vm.isReworkFlowDetailRequired}
             readOnly={vm.disableDetailEdit}
           />
         </>
@@ -739,6 +740,7 @@ function HeaderSection({
   toNonNegInt,
   onReworkFlowDetailChange,
   sourceDraftReloadBusy,
+  isReworkFlowDetailRequired,
   readOnly,
 }: {
   entity: DefectiveReworkOrderDocument
@@ -751,6 +753,7 @@ function HeaderSection({
   toNonNegInt: (v: number | '' | undefined) => number
   onReworkFlowDetailChange: (field: 'ReworkTypeofWorkid' | 'ReworkTypeofWork2id', value: string) => void
   sourceDraftReloadBusy: boolean
+  isReworkFlowDetailRequired: boolean
   readOnly: boolean
 }) {
   const view = entity as unknown as {
@@ -830,6 +833,8 @@ function HeaderSection({
       ),
     [badProcessOptions, reworkProcessId, reworkProcess2Id],
   )
+
+  const reworkProcessLabelClass = isReworkFlowDetailRequired ? 't-text-error' : 'text-black'
 
   return (
     <div className="w-full space-y-1.5">
@@ -932,7 +937,7 @@ function HeaderSection({
 
       {/* 第四行：返工工序、返工工序2 */}      
       <div className="grid grid-cols-[auto_1fr_auto_1fr] items-center gap-x-0.5">
-        <Label className="text-[13px]">返工工序</Label>
+        <Label className={`text-[13px] ${reworkProcessLabelClass}`}>返工工序</Label>
         <GridSelect
           value={view.ReworkTypeofWorkid != null ? String(view.ReworkTypeofWorkid) : ''}
           onChange={(v) => onReworkFlowDetailChange('ReworkTypeofWorkid', v)}

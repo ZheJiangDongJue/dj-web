@@ -31,6 +31,24 @@ export interface UpstreamFlowCardRef {
   flowDocumentId: number
 }
 
+export interface DirectUpstreamFlowCardDetailState {
+  /**
+   *
+   * 当前 NCR 的上游单据是否由流程卡明细直接生成。
+   *
+   */
+  isDirectFlowCardProduct: boolean
+  /**
+   *
+   * 命中的流程卡明细是否挂了特殊单据。
+   * @remarks
+   * - 当前 Web 红色提示不排除特殊单据工序；
+   * - 保留该状态用于诊断首件/末件等特殊工序来源。
+   *
+   */
+  isSpecialFlowCardDetail: boolean
+}
+
 const TABLE = {
   assemblyDetail: 'ProcessAssemblyFlowDetail',
   produceDetail: 'ProduceFlowDetail',
@@ -68,6 +86,138 @@ function resolveWorkTypeNameFromOptions(options: SelectOption[], id?: number): s
 
 function getFetchLookupFn(fetchLookupFn?: FetchLookupFn): FetchLookupFn {
   return fetchLookupFn ?? ((table, select, orderBy, opts) => fetchLookup(table, select, orderBy, opts as any))
+}
+
+/**
+ *
+ * 判断表名是否为“流程卡明细”表。
+ * @remarks
+ * - 入参允许 CLR 全限定名，会先通过 normalizeErpTableName 归一化；
+ * - 当前业务只识别组装流程卡明细与生产流程卡明细，避免误把其它明细链路当作流程卡。
+ * @param typeNameRaw 待判断的表名或 CLR 全限定名。
+ *
+ */
+export function isFlowCardDetailTableName(typeNameRaw: unknown): typeNameRaw is ReworkFlowDetailTableName {
+  const typeName = normalizeErpTableName(typeNameRaw)
+  return typeName === TABLE.assemblyDetail || typeName === TABLE.produceDetail
+}
+
+/**
+ *
+ * 查询流程卡明细是否为“特殊单据工序”。
+ * @remarks
+ * - 特殊单据工序通过 StepDocumentid + StepDocumentType 标识；
+ * - 查询失败或明细不存在时返回 null，由调用方按“未命中流程卡”处理。
+ * @param flowDetailTableName 流程卡明细表名（组装/生产）。
+ * @param flowDetailId 流程卡明细主键。
+ * @param fetcher 通用查询函数。
+ *
+ */
+async function fetchSpecialFlowCardDetailFlag(
+  flowDetailTableName: ReworkFlowDetailTableName,
+  flowDetailId: number,
+  fetcher: FetchLookupFn,
+): Promise<boolean | null> {
+  if (!flowDetailTableName || flowDetailId <= 0) return null
+
+  try {
+    const rows = await fetcher(
+      flowDetailTableName,
+      ['id', 'StepDocumentid', 'StepDocumentType'],
+      undefined,
+      { where: { DeletedTag: 0, id: flowDetailId }, take: 1 },
+    )
+    const row = Array.isArray(rows) && rows.length > 0 ? (rows[0] as any) : null
+    const id = normalizePositiveInt(row?.id ?? row?.Id ?? row?.ID)
+    if (!id) return null
+
+    const stepDocumentId = normalizePositiveInt(row?.StepDocumentid ?? row?.stepDocumentid)
+    const stepDocumentType = String(row?.StepDocumentType ?? row?.stepDocumentType ?? '').trim()
+    return Boolean(stepDocumentId && stepDocumentType)
+  } catch {
+    return null
+  }
+}
+
+/**
+ *
+ * 解析 NCR 当前上游单据是否为“流程卡明细的直接产物”。
+ * @remarks
+ * - 优先识别 NCR 草稿/单据头自身的 CreateByDetail*，这是后端草稿接口直接回填的来源流程卡明细；
+ * - 其次兼容 NCR.CreateByDocument* -> 上游单据 -> 上游单据.CreateByDetail*；
+ * - 不沿祖先链继续追溯，避免把间接来源误判为当前直接来源。
+ * @param doc NCR 单据头或兼容 DocumentBase 的对象。
+ * @param fetchLookupFn 可选查询函数，测试中可注入。
+ *
+ */
+export async function resolveDirectUpstreamFlowCardDetailState(
+  doc: any,
+  fetchLookupFn?: FetchLookupFn,
+): Promise<DirectUpstreamFlowCardDetailState> {
+  const fetcher = getFetchLookupFn(fetchLookupFn)
+  const empty: DirectUpstreamFlowCardDetailState = {
+    isDirectFlowCardProduct: false,
+    isSpecialFlowCardDetail: false,
+  }
+
+  const directFlowDetailTableName = normalizeErpTableName(doc?.CreateByDetailType ?? doc?.createByDetailType)
+  const directFlowDetailId = normalizePositiveInt(doc?.CreateByDetailid ?? doc?.createByDetailid)
+  if (isFlowCardDetailTableName(directFlowDetailTableName) && directFlowDetailId) {
+    const isSpecial = await fetchSpecialFlowCardDetailFlag(directFlowDetailTableName, directFlowDetailId, fetcher)
+    return {
+      isDirectFlowCardProduct: true,
+      isSpecialFlowCardDetail: Boolean(isSpecial),
+    }
+  }
+
+  const upstreamDocumentTableName = normalizeErpTableName(doc?.CreateByDocumentType ?? doc?.createByDocumentType)
+  const upstreamDocumentId = normalizePositiveInt(doc?.CreateByDocumentid ?? doc?.createByDocumentid)
+  if (!upstreamDocumentTableName || !upstreamDocumentId) return empty
+
+  try {
+    const rows = await fetcher(
+      upstreamDocumentTableName,
+      ['id', 'CreateByDetailType', 'CreateByDetailid'],
+      undefined,
+      { where: { DeletedTag: 0, id: upstreamDocumentId }, take: 1 },
+    )
+    const upstream = Array.isArray(rows) && rows.length > 0 ? (rows[0] as any) : null
+    const upstreamId = normalizePositiveInt(upstream?.id ?? upstream?.Id ?? upstream?.ID)
+    if (!upstreamId) return empty
+
+    const flowDetailTableName = normalizeErpTableName(upstream?.CreateByDetailType ?? upstream?.createByDetailType)
+    const flowDetailId = normalizePositiveInt(upstream?.CreateByDetailid ?? upstream?.createByDetailid)
+    if (!isFlowCardDetailTableName(flowDetailTableName) || !flowDetailId) return empty
+
+    const isSpecial = await fetchSpecialFlowCardDetailFlag(flowDetailTableName, flowDetailId, fetcher)
+    if (isSpecial == null) return empty
+
+    return {
+      isDirectFlowCardProduct: true,
+      isSpecialFlowCardDetail: isSpecial,
+    }
+  } catch {
+    return empty
+  }
+}
+
+/**
+ *
+ * 判断“返工工序”标签是否应显示为红色提示。
+ * @remarks
+ * - 对齐当前 Web 需求：当前 NCR 单据直接关联流程卡明细时显示红色；
+ * - 首件/末件等特殊单据工序也属于流程卡直接产物，不再按特殊单据排除；
+ * - 若只需要展示“是否直接来自流程卡”，请使用 resolveDirectUpstreamFlowCardDetailState。
+ * @param doc NCR 单据头或兼容 DocumentBase 的对象。
+ * @param fetchLookupFn 可选查询函数，测试中可注入。
+ *
+ */
+export async function shouldRequireReworkFlowDetailFromDirectUpstream(
+  doc: any,
+  fetchLookupFn?: FetchLookupFn,
+): Promise<boolean> {
+  const state = await resolveDirectUpstreamFlowCardDetailState(doc, fetchLookupFn)
+  return state.isDirectFlowCardProduct
 }
 
 /**

@@ -24,6 +24,7 @@ import { fetchLookup } from '@/lib/erp/lookup-core'
 import {
   fetchReworkFlowDetailOptionsFromUpstreamFlowCard,
   resolveUpstreamFlowDetailIdFromDocumentBase,
+  shouldRequireReworkFlowDetailFromDirectUpstream,
 } from '../../shared/reworkFlowDetailOptions'
 
 /**
@@ -168,6 +169,16 @@ export class NcrViewModel extends QualityDocumentBase<DefectiveReworkOrderDocume
 
   /**
    *
+   * “返工工序”是否需要按运行时必填样式提示。
+   * @remarks
+   * - 当 NCR 直接关联来源流程卡明细时，头部“返工工序”显示红色；
+   * - 该状态只影响 UI 提示颜色，具体保存/审批校验仍由前后端业务规则兜底。
+   *
+   */
+  public isReworkFlowDetailRequired = false
+
+  /**
+   *
    * 判定结果下拉选项列表。
    *
    */
@@ -249,6 +260,16 @@ export class NcrViewModel extends QualityDocumentBase<DefectiveReworkOrderDocume
    *
    */
   private currentSourceFlowDetailId: number | null = null
+
+  /**
+   *
+   * “返工工序”运行时必填状态加载序号。
+   * @remarks
+   * - 单据切换/刷新可能并发触发多次异步查询；
+   * - 使用序号丢弃过期回写，避免旧单据的红色提示串到新单据。
+   *
+   */
+  private reworkFlowDetailRequiredFetchSeq = 0
 
   /**
    *
@@ -618,9 +639,11 @@ export class NcrViewModel extends QualityDocumentBase<DefectiveReworkOrderDocume
    *
    */
   private clearSourceContext(): void {
+    this.reworkFlowDetailRequiredFetchSeq += 1
     this.sourceDraftReloadBusy = false
     this.currentSourceFlowDetailTableName = ''
     this.currentSourceFlowDetailId = null
+    this.isReworkFlowDetailRequired = false
   }
 
   /**
@@ -654,6 +677,32 @@ export class NcrViewModel extends QualityDocumentBase<DefectiveReworkOrderDocume
 
     this.currentSourceFlowDetailId = flowDetailId || null
     this.currentSourceFlowDetailTableName = flowDetailTableName
+  }
+
+  /**
+   *
+   * 刷新“返工工序”运行时必填提示状态。
+   * @remarks
+   * - 判断链路为：当前 NCR -> 上游检验/工序单据 -> 流程卡明细；
+   * - 只影响头部标签颜色，不改变返工工序候选列表与保存 payload。
+   * @param document 用于判断的单据头；默认使用当前 bill。
+   *
+   */
+  private async refreshReworkFlowDetailRequiredState(document: any = this.bill): Promise<void> {
+    const seq = ++this.reworkFlowDetailRequiredFetchSeq
+
+    let required = false
+    try {
+      required = await shouldRequireReworkFlowDetailFromDirectUpstream(document)
+    } catch {
+      required = false
+    }
+
+    if (seq !== this.reworkFlowDetailRequiredFetchSeq) return
+    if (this.isReworkFlowDetailRequired === required) return
+
+    this.isReworkFlowDetailRequired = required
+    this.emit()
   }
 
   /**
@@ -1592,8 +1641,10 @@ export class NcrViewModel extends QualityDocumentBase<DefectiveReworkOrderDocume
       this.ensureDetailLocalKey(d)
     }
     this.applySourceContextFromDocument(enriched)
+    this.isReworkFlowDetailRequired = false
     this.details = normDetails as any[]
     this.emit()
+    void this.refreshReworkFlowDetailRequiredState(enriched)
     this.ensureAtLeastOneDetailRow()
 
     // 异步补齐物料编码（不阻断刷新/打开流程）
