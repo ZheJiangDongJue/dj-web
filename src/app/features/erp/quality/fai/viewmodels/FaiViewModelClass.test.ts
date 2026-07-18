@@ -157,6 +157,7 @@ describe('FaiViewModelClass', () => {
     const appService = {
       save: vi.fn(async () => ({ id: 33, aggregate: null })),
       unapprove: vi.fn(async () => ({ success: true, message: '' })),
+      fetchById: vi.fn(async () => ({ document: null, details: [] })),
     } as unknown as FirstInspectionApplicationService
 
     const vm = new FaiViewModel(appService)
@@ -164,6 +165,7 @@ describe('FaiViewModelClass', () => {
     ;(vm.bill as any).DocumentStatus = DocumentStatus.已审批
     await vm.handleSave()
     vm.status = DocumentStatus.已审批
+    ;(appService as any).fetchById = vi.fn(async () => ({ document: vm.bill, details: vm.details }))
 
     const billBefore = vm.bill
     const ok = await vm.handleUnapprove()

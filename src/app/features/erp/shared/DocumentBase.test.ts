@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { toast } from 'sonner'
-import { DocumentBase } from './DocumentBase'
+import {
+  areDocumentMutationTimestampsEqual,
+  DocumentBase,
+  shouldReopenDocumentAfterRejectedMutation,
+} from './DocumentBase'
 import { createDocumentActions } from '@/lib/documents/DocumentActionsStore'
 
 vi.mock('sonner', () => ({
@@ -13,13 +17,19 @@ vi.mock('sonner', () => ({
   },
 }))
 
-function createBaseForTest() {
-  let document: Record<string, unknown> = {}
-  let details: unknown[] = []
-  let status = 0
-  const actions = createDocumentActions()
+function createBaseForTest(options: {
+  document?: Record<string, unknown>
+  details?: unknown[]
+  status?: number
+  actionOptions?: Parameters<typeof createDocumentActions>[0]
+  service?: Record<string, any>
+} = {}) {
+  let document: Record<string, unknown> = options.document ?? {}
+  let details: unknown[] = options.details ?? []
+  let status = options.status ?? 0
+  const actions = createDocumentActions(options.actionOptions)
   const base = new DocumentBase<Record<string, unknown>, unknown>({
-    service: {},
+    service: options.service ?? {},
     createEmptyDocument: () => ({}),
     createInitialDetails: () => [],
     deriveStatus: () => 0,
@@ -45,8 +55,156 @@ function createBaseForTest() {
     docActions: actions,
   })
 
-  return { base, actions }
+  return {
+    base,
+    actions,
+    getDocument: () => document,
+    getDetails: () => details,
+  }
 }
+
+describe('DocumentBase 写入前时间戳校验', () => {
+  afterEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('可解析为同一时刻的更新时间与审批时间视为一致', () => {
+    expect(areDocumentMutationTimestampsEqual(
+      { UpdateTime: '2026-01-01T08:00:00.000Z', ApprovalTime: null },
+      { updateTime: '2026-01-01T08:00:00Z', approvalTime: '' },
+    )).toBe(true)
+  })
+
+  it('只将明确的状态同步失败文案识别为需要重新打开单据', () => {
+    expect(shouldReopenDocumentAfterRejectedMutation('当前单据已经是审批状态了\n\n(可能因为网络问题让你这边状态没有同步)')).toBe(true)
+    expect(shouldReopenDocumentAfterRejectedMutation('第1行仓库为空,无法保存')).toBe(false)
+  })
+
+  it('已有 ID 的单据保存前会先获取数据库最新时间戳，一致时继续保存', async () => {
+    const callSave = vi.fn(async () => ({ id: 7 }))
+    const fetchById = vi.fn(async () => ({
+      document: { id: 7, UpdateTime: '2026-01-01T08:00:00.000Z', ApprovalTime: null },
+      details: [],
+    }))
+    const { base, actions } = createBaseForTest({
+      document: { id: 7, UpdateTime: '2026-01-01T08:00:00Z', ApprovalTime: null },
+      actionOptions: { callSave },
+      service: {
+        fetchById,
+        extractId: (result: any) => result?.id,
+      },
+    })
+    actions.setId(7)
+
+    await expect(base.handleSave()).resolves.toBe(7)
+
+    expect(fetchById).toHaveBeenCalledWith(7)
+    expect(callSave).toHaveBeenCalledOnce()
+    expect(toast.warning).not.toHaveBeenCalled()
+  })
+
+  it('保存前发现更新时间不一致时阻断保存并重新打开最新单据', async () => {
+    const callSave = vi.fn(async () => ({ id: 7 }))
+    const latest = { id: 7, Code: 'NEW', UpdateTime: '2026-01-01T09:00:00Z', ApprovalTime: null }
+    const fetchById = vi.fn(async () => ({ document: latest, details: [{ id: 1 }] }))
+    const { base, actions, getDocument, getDetails } = createBaseForTest({
+      document: { id: 7, Code: 'OLD', UpdateTime: '2026-01-01T08:00:00Z', ApprovalTime: null },
+      actionOptions: { callSave },
+      service: {
+        fetchById,
+        extractId: (result: any) => result?.id,
+      },
+    })
+    actions.setId(7)
+
+    await expect(base.handleSave()).resolves.toBeNull()
+
+    expect(callSave).not.toHaveBeenCalled()
+    expect(getDocument()).toEqual(latest)
+    expect(getDetails()).toEqual([{ id: 1 }])
+    expect(toast.warning).toHaveBeenCalledWith('当前单据已被其他操作修改，已重新打开最新数据，请确认后再保存')
+  })
+
+  it('保存被后端已审批状态拒绝时会重新打开数据库最新单据', async () => {
+    const callSave = vi.fn(async () => ({
+      id: null,
+      message: '当前单据已经是审批状态了\n\n(可能因为网络问题让你这边状态没有同步)',
+    }))
+    const latest = {
+      id: 7,
+      Code: 'APPROVED',
+      Status: 1,
+      UpdateTime: '2026-01-01T08:00:00Z',
+      ApprovalTime: '2026-01-01T09:00:00Z',
+    }
+    const fetchById = vi
+      .fn()
+      .mockResolvedValueOnce({
+        document: { id: 7, Code: 'OLD', Status: 0, UpdateTime: '2026-01-01T08:00:00Z', ApprovalTime: null },
+        details: [],
+      })
+      .mockResolvedValueOnce({ document: latest, details: [{ id: 2 }] })
+    const { base, actions, getDocument, getDetails } = createBaseForTest({
+      document: { id: 7, Code: 'OLD', Status: 0, UpdateTime: '2026-01-01T08:00:00Z', ApprovalTime: null },
+      actionOptions: { callSave },
+      service: {
+        fetchById,
+        extractId: (result: any) => result?.id,
+      },
+    })
+    actions.setId(7)
+
+    await expect(base.handleSave()).resolves.toBeNull()
+
+    expect(callSave).toHaveBeenCalledOnce()
+    expect(fetchById).toHaveBeenCalledTimes(2)
+    expect(getDocument()).toEqual(latest)
+    expect(getDetails()).toEqual([{ id: 2 }])
+    expect(toast.warning).toHaveBeenCalledWith('保存未执行，已重新打开数据库最新单据，请确认后重试')
+  })
+
+  it('反审批前发现审批时间不一致时阻断反审批', async () => {
+    const callUnapprove = vi.fn(async () => ({ success: true }))
+    const latest = { id: 9, UpdateTime: '2026-01-01T08:00:00Z', ApprovalTime: '2026-01-01T09:00:00Z' }
+    const fetchById = vi.fn(async () => ({ document: latest, details: [] }))
+    const { base, actions, getDocument } = createBaseForTest({
+      document: { id: 9, UpdateTime: '2026-01-01T08:00:00Z', ApprovalTime: '2026-01-01T08:30:00Z' },
+      actionOptions: { callUnapprove },
+      service: {
+        fetchById,
+        extractId: () => 9,
+      },
+    })
+    actions.setId(9)
+
+    await expect(base.handleUnapprove()).resolves.toBe(false)
+
+    expect(callUnapprove).not.toHaveBeenCalled()
+    expect(getDocument()).toEqual(latest)
+    expect(toast.warning).toHaveBeenCalledWith('当前单据已被其他操作修改，已重新打开最新数据，请确认后再反审批')
+  })
+
+  it('删除前发现更新时间不一致时阻断删除', async () => {
+    const remove = vi.fn(async () => ({ success: true }))
+    const latest = { id: 11, UpdateTime: '2026-01-01T10:00:00Z', ApprovalTime: null }
+    const fetchById = vi.fn(async () => ({ document: latest, details: [] }))
+    const { base, actions, getDocument } = createBaseForTest({
+      document: { id: 11, UpdateTime: '2026-01-01T09:00:00Z', ApprovalTime: null },
+      service: {
+        fetchById,
+        remove,
+        extractId: () => 11,
+      },
+    })
+    actions.setId(11)
+
+    await expect(base.handleDelete()).resolves.toBe(false)
+
+    expect(remove).not.toHaveBeenCalled()
+    expect(getDocument()).toEqual(latest)
+    expect(toast.warning).toHaveBeenCalledWith('当前单据已被其他操作修改，已重新打开最新数据，请确认后再删除')
+  })
+})
 
 describe('DocumentBase.runBusyAction', () => {
   afterEach(() => {

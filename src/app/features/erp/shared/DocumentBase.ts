@@ -14,6 +14,11 @@ import { extractUserFacingErrorMessage, formatActionErrorMessage, resolveUserFac
 type ScanDisposer = () => void
 type ScanResultHandler = (payload: ScanResultPayload) => void
 type PendingScanPayload = { at: number; payload: ScanResultPayload }
+type MutationTimestampSnapshot = {
+  readonly updateTime: string
+  readonly approvalTime: string
+  readonly hasAnyField: boolean
+}
 type ScanListenerGlobals = {
   registry: Record<string, ScanDisposer | undefined>
   seq: number
@@ -151,6 +156,110 @@ function safeJsonStringify(v: unknown): string {
   } catch {
     return ''
   }
+}
+
+function pickCaseInsensitiveField(
+  record: Record<string, unknown>,
+  names: readonly string[],
+): { readonly found: boolean; readonly value: unknown } {
+  const expected = new Set(names.map((name) => name.toLowerCase()))
+  for (const [key, value] of Object.entries(record)) {
+    if (expected.has(key.toLowerCase())) return { found: true, value }
+  }
+  return { found: false, value: undefined }
+}
+
+/**
+ *
+ * 将数据库时间字段归一为可比较值。
+ * @remarks
+ * - 兼容 null/空串、Date、ISO 字符串、SQL/接口常见的 `/Date(ms)/`；
+ * - 可解析时间按毫秒时间戳比较，避免格式差异造成误判；
+ * - 无法解析时保留整理后的原始文本，确保真正不同的值仍会被拦截。
+ * @param value 原始时间字段值。
+ *
+ */
+function normalizeMutationTimestamp(value: unknown): string {
+  if (value == null) return ''
+  if (value instanceof Date) {
+    const time = value.getTime()
+    return Number.isFinite(time) ? `ms:${time}` : ''
+  }
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? `n:${value}` : ''
+  }
+
+  const text = String(value).trim()
+  if (!text) return ''
+
+  const dotNetMatch = text.match(/^\/Date\((-?\d+)(?:[+-]\d+)?\)\/$/)
+  if (dotNetMatch) {
+    const time = Number(dotNetMatch[1])
+    return Number.isFinite(time) ? `ms:${time}` : `raw:${text}`
+  }
+
+  const time = Date.parse(text)
+  if (Number.isFinite(time)) return `ms:${time}`
+  return `raw:${text.replace(/\s+/g, ' ')}`
+}
+
+/**
+ *
+ * 提取用于写入前并发校验的单据时间戳。
+ * @param document 单据表头对象。
+ * @returns 更新时间、审批时间及是否存在可比较字段。
+ *
+ */
+function getMutationTimestampSnapshot(document: unknown): MutationTimestampSnapshot {
+  const record = (document ?? {}) as Record<string, unknown>
+  const update = pickCaseInsensitiveField(record, ['UpdateTime'])
+  const approval = pickCaseInsensitiveField(record, ['ApprovalTime', 'DocumentApprovalTime'])
+
+  return {
+    updateTime: normalizeMutationTimestamp(update.value),
+    approvalTime: normalizeMutationTimestamp(approval.value),
+    hasAnyField: update.found || approval.found,
+  }
+}
+
+/**
+ *
+ * 判断本地单据与数据库单据的写入相关时间戳是否一致。
+ * @param localDocument 当前页面中的单据。
+ * @param latestDocument 后端按 ID 重新获取的最新单据。
+ *
+ */
+export function areDocumentMutationTimestampsEqual(
+  localDocument: unknown,
+  latestDocument: unknown,
+): boolean {
+  const local = getMutationTimestampSnapshot(localDocument)
+  const latest = getMutationTimestampSnapshot(latestDocument)
+
+  if (!local.hasAnyField && !latest.hasAnyField) return true
+  return local.updateTime === latest.updateTime && local.approvalTime === latest.approvalTime
+}
+
+/**
+ *
+ * 判断后端保存失败是否来自“单据状态已在数据库变化”。
+ * @remarks
+ * - 这类错误通常表示前端状态没有同步数据库最新审批状态；
+ * - 只识别明确的状态冲突文案，避免普通业务校验失败时覆盖用户正在编辑的数据。
+ * @param message 后端返回的用户可见错误信息。
+ *
+ */
+export function shouldReopenDocumentAfterRejectedMutation(message: string | null | undefined): boolean {
+  const text = String(message ?? '').replace(/\s+/g, '')
+  if (!text) return false
+
+  return (
+    text.includes('当前单据已经是审批状态了') ||
+    text.includes('当前单据已审批,无法修改') ||
+    text.includes('当前单据已审批，无法修改') ||
+    text.includes('当前单据不是未审批状态') ||
+    text.includes('状态没有同步')
+  )
 }
 
 function ensurePendingScanStore(globals: ScanListenerGlobals): Record<string, PendingScanPayload[]> {
@@ -784,6 +893,137 @@ export class DocumentBase<TDocument, TDetail> implements DocumentBaseLike<TDocum
 
   /**
    *
+   * 将已获取的服务端单据快照写回当前页面状态。
+   * @remarks
+   * - 用于普通刷新、按 ID 打开，以及写入前并发校验失败后的“重新打开最新单据”；
+   * - 写入后会执行业务方的 onAfterRefresh，以便各页面继续做字段标准化、显示名补齐等处理。
+   * @param targetId 单据主键。
+   * @param document 服务端最新表头。
+   * @param details 服务端最新明细。
+   * @param ctx 当前加载上下文。
+   *
+   */
+  private async applyLoadedSnapshot(
+    targetId: number,
+    document: TDocument,
+    details: TDetail[],
+    ctx: DocumentLoadContext,
+  ): Promise<void> {
+    if (!this.bridge) return
+
+    const { deriveStatus, onAfterRefresh } = this.options
+    const { docActions, setDocument, setDetails, setStatus } = this.bridge
+
+    setDocument(document)
+    setDetails(details)
+    setStatus(deriveStatus(document))
+    docActions.setId(targetId)
+    await onAfterRefresh?.({ document, details }, ctx)
+  }
+
+  /**
+   *
+   * 写入前校验当前单据是否仍与数据库中的更新时间、审批时间一致。
+   * @remarks
+   * - 仅对已有 ID 的单据生效；新增草稿无数据库版本可比较，直接放行；
+   * - 校验失败时会用数据库最新数据重新打开当前单据，并提示用户确认后重试；
+   * - 校验接口失败时阻断写入，避免在无法确认版本的情况下覆盖他人修改。
+   * @param actionName 当前即将执行的写入动作名，用于提示文案。
+   *
+   */
+  private async ensureDocumentFreshBeforeMutation(actionName: string): Promise<boolean> {
+    if (!this.bridge) return false
+
+    const { service } = this.options
+    const currentId = this.getCurrentBillId()
+    if (!currentId) return true
+    if (!service.fetchById) return true
+
+    const seq = this.bumpLoadSeq()
+    const ctx: DocumentLoadContext = { seq, isActive: () => this.isLoadSeqActive(seq) }
+
+    try {
+      const res = await service.fetchById(currentId)
+      if (!this.isLoadSeqActive(seq)) return false
+
+      const latestDoc = (res?.document ?? null) as TDocument | null
+      const latestDetails = Array.isArray(res?.details) ? (res.details as TDetail[]) : []
+      if (!latestDoc) {
+        try {
+          toast.error(`${actionName}前无法获取数据库中的最新单据，请刷新后重试`)
+        } catch {
+          // ignore
+        }
+        return false
+      }
+
+      const currentDoc = this.bridge.getDocument()
+      if (areDocumentMutationTimestampsEqual(currentDoc, latestDoc)) {
+        return true
+      }
+
+      await this.applyLoadedSnapshot(currentId, latestDoc, latestDetails, ctx)
+      try {
+        toast.warning(`当前单据已被其他操作修改，已重新打开最新数据，请确认后再${actionName}`)
+      } catch {
+        // ignore
+      }
+      return false
+    } catch (error) {
+      if (!this.isLoadSeqActive(seq)) return false
+      console.error(`[DocumentBase] ${actionName}前校验单据最新状态失败:`, error)
+      try {
+        toast.error(resolveUserFacingErrorMessage(error, `${actionName}前验证最新单据失败，请刷新后重试`))
+      } catch {
+        // ignore
+      }
+      return false
+    }
+  }
+
+  /**
+   *
+   * 写入被后端以“状态已变化”拒绝后，重新打开数据库中的最新单据。
+   * @remarks
+   * - 这是写入前时间戳校验之外的兜底：即使前置校验未命中，后端最终拒绝写入时也要让页面回到最新状态；
+   * - 仅由明确的状态冲突错误触发，避免普通保存失败覆盖本地输入。
+   * @param actionName 当前动作名。
+   *
+   */
+  private async reopenLatestDocumentAfterRejectedMutation(actionName: string): Promise<boolean> {
+    if (!this.bridge) return false
+
+    const { service } = this.options
+    const currentId = this.getCurrentBillId()
+    if (!currentId || !service.fetchById) return false
+
+    const seq = this.bumpLoadSeq()
+    const ctx: DocumentLoadContext = { seq, isActive: () => this.isLoadSeqActive(seq) }
+
+    try {
+      const res = await service.fetchById(currentId)
+      if (!this.isLoadSeqActive(seq)) return false
+
+      const latestDoc = (res?.document ?? null) as TDocument | null
+      if (!latestDoc) return false
+
+      const latestDetails = Array.isArray(res?.details) ? (res.details as TDetail[]) : []
+      await this.applyLoadedSnapshot(currentId, latestDoc, latestDetails, ctx)
+      try {
+        toast.warning(`${actionName}未执行，已重新打开数据库最新单据，请确认后重试`)
+      } catch {
+        // ignore
+      }
+      return true
+    } catch (error) {
+      if (!this.isLoadSeqActive(seq)) return false
+      console.error(`[DocumentBase] ${actionName}失败后重新打开最新单据失败:`, error)
+      return false
+    }
+  }
+
+  /**
+   *
    * 激活扫码监听（包含副作用）。
    * @remarks
    * - 内部会订阅 Android 桥接 scanResult 事件，并写入全局 active handler；
@@ -1030,6 +1270,8 @@ export class DocumentBase<TDocument, TDetail> implements DocumentBaseLike<TDocum
     const { docActions } = this.bridge
 
     try {
+      if (!(await this.ensureDocumentFreshBeforeMutation('保存'))) return null
+
       const res = await docActions.save({})
       // 约定：当 callSave 明确返回 { id: null } 时，表示“本次保存失败”，不可回退沿用旧 id。
       if (
@@ -1043,6 +1285,9 @@ export class DocumentBase<TDocument, TDetail> implements DocumentBaseLike<TDocum
           toast.error(formatActionErrorMessage('保存', { message: msg }, '保存失败'))
         } catch {
           // ignore
+        }
+        if (shouldReopenDocumentAfterRejectedMutation(msg)) {
+          await this.reopenLatestDocumentAfterRejectedMutation('保存')
         }
         return null
       }
@@ -1105,10 +1350,14 @@ export class DocumentBase<TDocument, TDetail> implements DocumentBaseLike<TDocum
       return id ?? null
     } catch (error) {
       console.error('[DocumentBase] 保存失败:', error)
+      const msg = extractUserFacingErrorMessage(error)
       try {
         toast.error(formatActionErrorMessage('保存', error, '保存失败'))
       } catch {
         // 避免 toast 失败阻断主流程
+      }
+      if (shouldReopenDocumentAfterRejectedMutation(msg)) {
+        await this.reopenLatestDocumentAfterRejectedMutation('保存')
       }
       return null
     }
@@ -1132,6 +1381,10 @@ export class DocumentBase<TDocument, TDetail> implements DocumentBaseLike<TDocum
       service,
     } = this.options
     const { docActions, getStatusRef, setStatus } = this.bridge
+
+    if (!(await this.ensureDocumentFreshBeforeMutation('审批'))) {
+      return false
+    }
 
     if (validateBeforeApprove && !validateBeforeApprove()) {
       return false
@@ -1186,6 +1439,10 @@ export class DocumentBase<TDocument, TDetail> implements DocumentBaseLike<TDocum
       service,
     } = this.options
     const { docActions, getStatusRef, setStatus } = this.bridge
+
+    if (!(await this.ensureDocumentFreshBeforeMutation('反审批'))) {
+      return false
+    }
 
     const locks = buildStatusLocks(getStatusRef(), hasStatusFlag, statusFlagConfig)
     if (locks.isLocked || locks.unapproveDisabled) return false
@@ -1245,6 +1502,7 @@ export class DocumentBase<TDocument, TDetail> implements DocumentBaseLike<TDocum
     }
 
     if (!service.remove) return false
+    if (!(await this.ensureDocumentFreshBeforeMutation('删除'))) return false
 
     try {
       const res = await service.remove(currentId)

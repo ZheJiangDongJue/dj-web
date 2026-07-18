@@ -296,6 +296,7 @@ describe('FqcViewModelClass', () => {
     await vm.handleSave()
     vm.status = DocumentStatus.已审批
     ;(vm.bill as any).DocumentStatus = DocumentStatus.已审批
+    ;(appService as any).fetchById = vi.fn(async () => ({ document: vm.bill, details: vm.details }))
     expect(vm.disableApprove).toBe(true)
     expect(vm.disableUnapprove).toBe(false)
     expect(vm.disableRemoveDetail).toBe(true)
