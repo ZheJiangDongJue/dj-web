@@ -3,6 +3,18 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useS
 import { notFound, usePathname, useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { scanQRCode } from "@/lib/android-bridge";
+import {
+  registerDocumentRefreshConfirmationHandler,
+  type DocumentRefreshConfirmationOptions,
+} from "@/lib/documents/document-refresh-confirmation";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 /**
  *
@@ -15,6 +27,11 @@ import { scanQRCode } from "@/lib/android-bridge";
 type Ctx = {
   setTitle: (title: string | undefined) => void;
   clearTitle: () => void;
+};
+
+type RefreshConfirmState = {
+  options: DocumentRefreshConfirmationOptions;
+  resolve: (value: boolean) => void;
 };
 
 const FeaturesLayoutContext = createContext<Ctx | null>(null);
@@ -60,6 +77,7 @@ export default function FeaturesClientLayout({ children }: { children: React.Rea
 
   // 由页面通过上下文设置的标题（优先级最高）。
   const [explicitTitle, setExplicitTitle] = useState<string | undefined>(undefined);
+  const [refreshConfirm, setRefreshConfirm] = useState<RefreshConfirmState | null>(null);
 
   // 仅允许显式设置标题，删除兜底逻辑
   const title = explicitTitle;
@@ -119,6 +137,24 @@ export default function FeaturesClientLayout({ children }: { children: React.Rea
         // ignore toast failure
       }
     }
+  }, []);
+
+  const closeRefreshConfirm = useCallback((value: boolean) => {
+    setRefreshConfirm((current) => {
+      current?.resolve(value);
+      return null;
+    });
+  }, []);
+
+  useEffect(() => {
+    return registerDocumentRefreshConfirmationHandler((options) => {
+      return new Promise<boolean>((resolve) => {
+        setRefreshConfirm((current) => {
+          current?.resolve(false);
+          return { options, resolve };
+        });
+      });
+    });
   }, []);
 
   return (
@@ -187,6 +223,38 @@ export default function FeaturesClientLayout({ children }: { children: React.Rea
         <main className="flex min-h-0 flex-1 flex-col">
           {children}
         </main>
+
+        <Dialog
+          open={!!refreshConfirm}
+          onOpenChange={(open) => {
+            if (!open) closeRefreshConfirm(false);
+          }}
+        >
+          <DialogContent className="max-w-[22rem]" showCloseButton={false}>
+            <DialogHeader>
+              <DialogTitle>单据已被修改</DialogTitle>
+              <DialogDescription>
+                是否更新到最新？
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <button
+                type="button"
+                className="inline-flex min-h-10 items-center justify-center rounded-md border border-neutral-300 px-4 text-sm font-medium text-neutral-700 hover:bg-neutral-100 active:bg-neutral-200 dark:border-neutral-700 dark:text-neutral-200 dark:hover:bg-neutral-800"
+                onClick={() => closeRefreshConfirm(false)}
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                className="inline-flex min-h-10 items-center justify-center rounded-md bg-neutral-900 px-4 text-sm font-medium text-white hover:bg-neutral-700 active:bg-neutral-800 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-white"
+                onClick={() => closeRefreshConfirm(true)}
+              >
+                更新
+              </button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </FeaturesLayoutContext.Provider>
   );

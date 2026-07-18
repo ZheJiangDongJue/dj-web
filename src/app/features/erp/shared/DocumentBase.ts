@@ -2,6 +2,7 @@ import { toast } from 'sonner'
 import { BillApi } from '@/lib/erp/bill-api'
 import { addScanListener, runAfterAndroidAppResumed, type ScanResultPayload } from '@/lib/android-bridge'
 import type { DocumentActions } from '@/lib/documents/useDocumentActions'
+import { confirmDocumentRefreshBeforeApply } from '@/lib/documents/document-refresh-confirmation'
 import { extractUserFacingErrorMessage, formatActionErrorMessage, resolveUserFacingErrorMessage } from '@/lib/errors/user-facing-error'
 
 /**
@@ -962,9 +963,22 @@ export class DocumentBase<TDocument, TDetail> implements DocumentBaseLike<TDocum
         return true
       }
 
+      const shouldApplyLatest = await confirmDocumentRefreshBeforeApply({
+        actionName,
+        reason: 'precheck',
+      })
+      if (!shouldApplyLatest) {
+        try {
+          toast.warning(`${actionName}未执行，当前页面仍保留原单据数据`)
+        } catch {
+          // ignore
+        }
+        return false
+      }
+
       await this.applyLoadedSnapshot(currentId, latestDoc, latestDetails, ctx)
       try {
-        toast.warning(`当前单据已被其他操作修改，已重新打开最新数据，请确认后再${actionName}`)
+        toast.warning(`已更新到数据库最新单据，请确认后再${actionName}`)
       } catch {
         // ignore
       }
@@ -1008,9 +1022,22 @@ export class DocumentBase<TDocument, TDetail> implements DocumentBaseLike<TDocum
       if (!latestDoc) return false
 
       const latestDetails = Array.isArray(res?.details) ? (res.details as TDetail[]) : []
+      const shouldApplyLatest = await confirmDocumentRefreshBeforeApply({
+        actionName,
+        reason: 'rejected',
+      })
+      if (!shouldApplyLatest) {
+        try {
+          toast.warning(`${actionName}未执行，当前页面仍保留原单据数据`)
+        } catch {
+          // ignore
+        }
+        return false
+      }
+
       await this.applyLoadedSnapshot(currentId, latestDoc, latestDetails, ctx)
       try {
-        toast.warning(`${actionName}未执行，已重新打开数据库最新单据，请确认后重试`)
+        toast.warning(`${actionName}未执行，已更新到数据库最新单据，请确认后重试`)
       } catch {
         // ignore
       }

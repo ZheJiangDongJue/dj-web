@@ -6,6 +6,7 @@ import {
   shouldReopenDocumentAfterRejectedMutation,
 } from './DocumentBase'
 import { createDocumentActions } from '@/lib/documents/DocumentActionsStore'
+import { registerDocumentRefreshConfirmationHandler } from '@/lib/documents/document-refresh-confirmation'
 
 vi.mock('sonner', () => ({
   toast: {
@@ -64,7 +65,11 @@ function createBaseForTest(options: {
 }
 
 describe('DocumentBase 写入前时间戳校验', () => {
+  let unregisterConfirm: (() => void) | null = null
+
   afterEach(() => {
+    unregisterConfirm?.()
+    unregisterConfirm = null
     vi.clearAllMocks()
   })
 
@@ -104,6 +109,7 @@ describe('DocumentBase 写入前时间戳校验', () => {
   })
 
   it('保存前发现更新时间不一致时阻断保存并重新打开最新单据', async () => {
+    unregisterConfirm = registerDocumentRefreshConfirmationHandler(() => true)
     const callSave = vi.fn(async () => ({ id: 7 }))
     const latest = { id: 7, Code: 'NEW', UpdateTime: '2026-01-01T09:00:00Z', ApprovalTime: null }
     const fetchById = vi.fn(async () => ({ document: latest, details: [{ id: 1 }] }))
@@ -122,10 +128,36 @@ describe('DocumentBase 写入前时间戳校验', () => {
     expect(callSave).not.toHaveBeenCalled()
     expect(getDocument()).toEqual(latest)
     expect(getDetails()).toEqual([{ id: 1 }])
-    expect(toast.warning).toHaveBeenCalledWith('当前单据已被其他操作修改，已重新打开最新数据，请确认后再保存')
+    expect(toast.warning).toHaveBeenCalledWith('已更新到数据库最新单据，请确认后再保存')
+  })
+
+  it('保存前发现更新时间不一致但用户取消时不更新页面数据', async () => {
+    unregisterConfirm = registerDocumentRefreshConfirmationHandler(() => false)
+    const callSave = vi.fn(async () => ({ id: 7 }))
+    const latest = { id: 7, Code: 'NEW', UpdateTime: '2026-01-01T09:00:00Z', ApprovalTime: null }
+    const original = { id: 7, Code: 'OLD', UpdateTime: '2026-01-01T08:00:00Z', ApprovalTime: null }
+    const fetchById = vi.fn(async () => ({ document: latest, details: [{ id: 1 }] }))
+    const { base, actions, getDocument, getDetails } = createBaseForTest({
+      document: original,
+      details: [],
+      actionOptions: { callSave },
+      service: {
+        fetchById,
+        extractId: (result: any) => result?.id,
+      },
+    })
+    actions.setId(7)
+
+    await expect(base.handleSave()).resolves.toBeNull()
+
+    expect(callSave).not.toHaveBeenCalled()
+    expect(getDocument()).toEqual(original)
+    expect(getDetails()).toEqual([])
+    expect(toast.warning).toHaveBeenCalledWith('保存未执行，当前页面仍保留原单据数据')
   })
 
   it('保存被后端已审批状态拒绝时会重新打开数据库最新单据', async () => {
+    unregisterConfirm = registerDocumentRefreshConfirmationHandler(() => true)
     const callSave = vi.fn(async () => ({
       id: null,
       message: '当前单据已经是审批状态了\n\n(可能因为网络问题让你这边状态没有同步)',
@@ -160,10 +192,11 @@ describe('DocumentBase 写入前时间戳校验', () => {
     expect(fetchById).toHaveBeenCalledTimes(2)
     expect(getDocument()).toEqual(latest)
     expect(getDetails()).toEqual([{ id: 2 }])
-    expect(toast.warning).toHaveBeenCalledWith('保存未执行，已重新打开数据库最新单据，请确认后重试')
+    expect(toast.warning).toHaveBeenCalledWith('保存未执行，已更新到数据库最新单据，请确认后重试')
   })
 
   it('反审批前发现审批时间不一致时阻断反审批', async () => {
+    unregisterConfirm = registerDocumentRefreshConfirmationHandler(() => true)
     const callUnapprove = vi.fn(async () => ({ success: true }))
     const latest = { id: 9, UpdateTime: '2026-01-01T08:00:00Z', ApprovalTime: '2026-01-01T09:00:00Z' }
     const fetchById = vi.fn(async () => ({ document: latest, details: [] }))
@@ -181,10 +214,11 @@ describe('DocumentBase 写入前时间戳校验', () => {
 
     expect(callUnapprove).not.toHaveBeenCalled()
     expect(getDocument()).toEqual(latest)
-    expect(toast.warning).toHaveBeenCalledWith('当前单据已被其他操作修改，已重新打开最新数据，请确认后再反审批')
+    expect(toast.warning).toHaveBeenCalledWith('已更新到数据库最新单据，请确认后再反审批')
   })
 
   it('删除前发现更新时间不一致时阻断删除', async () => {
+    unregisterConfirm = registerDocumentRefreshConfirmationHandler(() => true)
     const remove = vi.fn(async () => ({ success: true }))
     const latest = { id: 11, UpdateTime: '2026-01-01T10:00:00Z', ApprovalTime: null }
     const fetchById = vi.fn(async () => ({ document: latest, details: [] }))
@@ -202,7 +236,7 @@ describe('DocumentBase 写入前时间戳校验', () => {
 
     expect(remove).not.toHaveBeenCalled()
     expect(getDocument()).toEqual(latest)
-    expect(toast.warning).toHaveBeenCalledWith('当前单据已被其他操作修改，已重新打开最新数据，请确认后再删除')
+    expect(toast.warning).toHaveBeenCalledWith('已更新到数据库最新单据，请确认后再删除')
   })
 })
 
