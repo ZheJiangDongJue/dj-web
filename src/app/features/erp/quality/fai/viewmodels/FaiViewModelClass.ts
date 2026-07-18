@@ -386,11 +386,11 @@ export class FaiViewModel extends QualityDocumentBase<FirstInspectionDocument, F
   /**
    *
    * 解析频率文本，返回启用的测量项数量（1-5）。
+   * - 空值、非法值、0 与负数均走默认策略，启用全部 5 项。
    *
    */
   public parseMeasureFrequency(freq: unknown): number {
-    const n = Number(parseMeasureFrequencyUtil(String(freq ?? '')))
-    return Math.max(1, Math.min(5, Number.isFinite(n) ? n : 1))
+    return parseMeasureFrequencyUtil(freq == null ? null : String(freq))
   }
 
   /**

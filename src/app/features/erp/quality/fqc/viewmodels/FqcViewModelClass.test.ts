@@ -87,6 +87,15 @@ describe('FqcViewModelClass', () => {
     vi.clearAllMocks()
   })
 
+  test('parseMeasureFrequency 对非法频率和 0 启用全部 5 个实测项', () => {
+    const vm = new FqcViewModel(createMockAppService())
+
+    expect(vm.parseMeasureFrequency('abc')).toBe(5)
+    expect(vm.parseMeasureFrequency('0')).toBe(5)
+    expect(vm.parseMeasureFrequency('-1')).toBe(5)
+    expect(vm.parseMeasureFrequency('2')).toBe(2)
+  })
+
   test('handleSave 使用应用服务保存并回写 id', async () => {
     const appService = createMockAppService({
       save: vi.fn(async () => ({ id: 123, aggregate: null })),

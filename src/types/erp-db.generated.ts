@@ -501,10 +501,12 @@ export enum ListItemTemplateType {
 
 // 来自: ../ERP_csharp/ERP.Db/Enums/Check/MaterialCheckCaseType.cs
 export enum MaterialCheckCaseType {
-  Material  = 1,
-  StockOut  = 2,
-  FirstInspection  = 3,
-  FinalInspection  = 4,
+  Material  = 0,
+  IncomingInspection  = 1,
+  FinishedInspection  = 2,
+  StockOut  = 3,
+  FirstInspection  = 4,
+  FinalInspection  = 5,
 }
 
 // 来自: ../ERP_csharp/ERP.Db/EntityFrameworkCore/ERPServer/Other/MaterialFile.cs
@@ -9266,7 +9268,7 @@ export class MaterialCheckCase extends GeneralEntityBase {
       this.SeverityLevel = SeverityLevel.减量 ;
     }
     if (this.CaseType === undefined || this.CaseType === null) {
-      this.CaseType = MaterialCheckCaseType.Material ;
+      this.CaseType = MaterialCheckCaseType.IncomingInspection ;
     }
   }
 }

@@ -14,7 +14,7 @@ import ApproveFooterBar from '@/app/features/common/documents/ApproveFooterBar'
 import DocumentHeaderActions from '@/app/features/common/documents/DocumentHeaderActions'
 import DebugFab from '@/components/molecules/DebugFab'
 import { focusComboboxByAriaLabel } from '@/lib/dom/focusCombobox'
-import { isEmptyMeasureFrequency } from '@/lib/documents/inspection'
+import { shouldUseDefaultMeasureFrequency } from '@/lib/documents/inspection'
 import { useFaiViewModelClass as useFaiVM } from './viewmodels/FaiViewModelClass'
 import { DocumentStatus } from '@/types/erp-db.generated'
 import { type RequiredFieldRegistration } from '@/lib/validation/requiredFieldManager'
@@ -319,7 +319,7 @@ const FaiDetailsSection = memo(function FaiDetailsSection({
       renderItem={({ item, index }) => {
         const detailKey = getDetailKey(item)
         const enabledCount = parseMeasureFrequency((item as any).Frequency)
-        const requireAtLeastOneMeasure = isEmptyMeasureFrequency((item as any).Frequency)
+        const requireAtLeastOneMeasure = shouldUseDefaultMeasureFrequency((item as any).Frequency)
         return (
           <>
             <div className="mb-2 flex items-center justify-between">

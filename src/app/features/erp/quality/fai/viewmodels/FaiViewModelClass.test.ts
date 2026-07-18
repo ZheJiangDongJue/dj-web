@@ -65,6 +65,17 @@ describe('FaiViewModelClass', () => {
     return detail
   }
 
+  test('parseMeasureFrequency 对非法频率和 0 启用全部 5 个实测项', async () => {
+    vi.resetModules()
+    const { FaiViewModel } = await import('./FaiViewModelClass')
+    const vm = new FaiViewModel({} as any)
+
+    expect(vm.parseMeasureFrequency('abc')).toBe(5)
+    expect(vm.parseMeasureFrequency('0')).toBe(5)
+    expect(vm.parseMeasureFrequency('-1')).toBe(5)
+    expect(vm.parseMeasureFrequency('2')).toBe(2)
+  })
+
   test('useFaiViewModelClass 在 Strict Effects 演练中不应清空 bridge', async () => {
     const appService = {
       save: vi.fn(),

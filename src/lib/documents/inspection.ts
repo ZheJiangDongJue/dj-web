@@ -18,6 +18,20 @@ export function isEmptyMeasureFrequency(text: string | null | undefined): boolea
 
 /**
  *
+ * 判断“检验频率”是否应进入默认实测策略。
+ * - 空频率、非法文本、0 与负数都表示无法给出明确抽检次数；
+ * - 默认策略会放开 1~5 全部实测项，并由页面决定是否使用宽松必填规则。
+ *
+ */
+export function shouldUseDefaultMeasureFrequency(text: string | null | undefined): boolean {
+  const raw = (text ?? '').toString().trim()
+  if (isEmptyMeasureFrequency(raw)) return true
+  const n = Number(raw)
+  return !Number.isFinite(n) || n <= 0
+}
+
+/**
+ *
  * 将输入解析为非负整数：空串/NaN/负数 → 0
  * @param n 原始输入
  *
@@ -63,14 +77,13 @@ export function computeJudgeQuantitySplit(
 /**
  *
  * 解析“检验频率”启用的实测项个数
- * - 输入为空（含 null/undefined/空白串）时，默认启用全部 5 个实测项
- * - 输入如 '1' | '2' | '3' | '5' 等，非法时返回 0
+ * - 输入为空、非法、0 或负数时，默认启用全部 5 个实测项
+ * - 输入如 '1' | '2' | '3' | '5' 等有效正数时，按数字启用并钳制到 5
  *
  */
 export function parseMeasureFrequency(text: string | null | undefined): number {
   const raw = (text ?? '').toString().trim()
-  if (isEmptyMeasureFrequency(raw)) return 5
+  if (shouldUseDefaultMeasureFrequency(raw)) return 5
   const n = Number(raw)
-  if (!Number.isFinite(n)) return 0
   return Math.max(0, Math.min(5, Math.floor(n)))
 }
