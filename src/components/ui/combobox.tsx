@@ -165,6 +165,13 @@ export interface ComboboxProps {
   renderOption?: (option: ComboboxOption, selected: boolean) => React.ReactNode
   /**
    *
+   * 是否在选项左侧显示选中勾选图标。
+   * @remarks 默认显示并预留图标列；多列业务下拉可关闭，避免左侧出现空白占位。
+   *
+   */
+  showSelectionIcon?: boolean
+  /**
+   *
    * 是否允许清空（再次选择同一项或点击清除按钮）
    *
    */
@@ -241,6 +248,7 @@ export function Combobox({
   ariaLabel,
   contentClassName,
   renderOption,
+  showSelectionIcon = true,
   clearable = true,
   size = "default",
   name,
@@ -478,12 +486,14 @@ export function Combobox({
                     // cmdk 支持 aria-disabled，通过 data-[disabled] 控制样式
                     disabled={opt.disabled}
                   >
-                    <CheckIcon
-                      className={cn(
-                        "mr-2 size-4",
-                        selected ? "opacity-100" : "opacity-0"
-                      )}
-                    />
+                    {showSelectionIcon ? (
+                      <CheckIcon
+                        className={cn(
+                          "mr-2 size-4",
+                          selected ? "opacity-100" : "opacity-0"
+                        )}
+                      />
+                    ) : null}
                     {renderOption ? (
                       renderOption(opt, selected)
                     ) : (

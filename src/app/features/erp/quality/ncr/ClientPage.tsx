@@ -128,6 +128,7 @@ function ReworkProcessSelect({
       style={style}
       contentClassName={reworkProcessDropdownClassName}
       renderOption={(option) => renderReworkProcessOption(option as ReworkProcessOption)}
+      showSelectionIcon={false}
     />
   )
 }
@@ -176,6 +177,7 @@ function WorkTypeSelect({
       style={style}
       contentClassName={workTypeDropdownClassName}
       renderOption={(option) => renderWorkTypeOption(option as WorkTypeOption)}
+      showSelectionIcon={false}
     />
   )
 }

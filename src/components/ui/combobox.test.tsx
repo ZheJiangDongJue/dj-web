@@ -197,4 +197,15 @@ describe("Combobox", () => {
       ]
     expect(lastCall).toHaveBeenCalledTimes(0)
   })
+
+  it("可关闭选项左侧的选中图标占位", () => {
+    const options = createEmployeeOptions(2)
+    const { container } = render(
+      <Combobox open options={options} value="" showSelectionIcon={false} />
+    )
+
+    const firstItem = container.querySelector("[data-slot='command-item']")
+    expect(firstItem).not.toBeNull()
+    expect(firstItem?.querySelector("svg")).toBeNull()
+  })
 })
