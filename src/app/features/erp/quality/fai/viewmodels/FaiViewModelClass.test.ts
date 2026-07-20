@@ -114,6 +114,25 @@ describe('FaiViewModelClass', () => {
     vi.doUnmock('react')
   })
 
+  test('redirectToNcrPrompt 优先使用 replace，失败时回退到 assign/href', async () => {
+    const { FaiViewModel } = await import('./FaiViewModelClass')
+    const vm = new FaiViewModel({} as any)
+    const replace = vi.fn(() => {
+      throw new Error('replace fail')
+    })
+    const assign = vi.fn(() => {
+      throw new Error('assign fail')
+    })
+    ;(globalThis as any).window = { location: { origin: 'http://localhost', replace, assign, href: '' } }
+
+    ;(vm as any).redirectToNcrPrompt(9)
+
+    expect(replace).toHaveBeenCalled()
+    expect(assign).toHaveBeenCalled()
+    expect((globalThis as any).window.location.href).toContain('billId=9')
+    ;(globalThis as any).window = undefined as any
+  })
+
   test('confirmDailyPlanFlowDetailPick: OPEN_BY_ID 时应关闭弹窗并执行打开分支', async () => {
     vi.resetModules()
     const { toast } = await import('sonner')

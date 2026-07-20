@@ -3,6 +3,11 @@ import { useFeaturesPageTitle } from '@/app/features/_components'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import styles from './ncr-prompt.module.css'
 import { useRouter, useSearchParams } from 'next/navigation'
+import {
+  buildQualityInspectionActionHref,
+  buildQualityInspectionReturnTo,
+  normalizeInternalReturnTo,
+} from '@/lib/navigation/return-to'
 
 /**
  *
@@ -50,6 +55,12 @@ export default function ClientPage({
   const orderNo = getParam('orderNo')
   const process = getParam('process')
   const ngQty = getParam('ngQty')
+  const billId = getParam('billId')
+  const returnTo = useMemo(() => {
+    const explicitReturnTo = normalizeInternalReturnTo(getParam('returnTo'))
+    if (explicitReturnTo) return explicitReturnTo
+    return buildQualityInspectionReturnTo('fqc', billId)
+  }, [getParam, billId])
 
   // 自动跳转控制
   const enableAuto = enableCountdownRedirect && getParam('auto') !== '0'
@@ -87,19 +98,19 @@ export default function ClientPage({
     clearAutoTimer()
     hasNavigatedRef.current = true
     try {
-      const billId = getParam('billId')
       const type = getParam('type')
       const from = getParam('from')
       const qs = new URLSearchParams()
       if (from && String(from).trim() !== '') qs.set('from', String(from))
+      if (returnTo) qs.set('returnTo', returnTo)
       if (type && String(type).trim() !== '') qs.set('type', String(type))
       if (billId && String(billId).trim() !== '') qs.set('billId', String(billId))
       const suffix = qs.toString()
-      router.push(`/features/erp/quality/ncr${suffix ? `?${suffix}` : ''}`)
+      router.replace(`/features/erp/quality/ncr${suffix ? `?${suffix}` : ''}`)
     } catch {
       hasNavigatedRef.current = false
     }
-  }, [router, getParam, clearAutoTimer])
+  }, [router, getParam, clearAutoTimer, billId, returnTo])
 
   /**
    *
@@ -112,14 +123,12 @@ export default function ClientPage({
     clearAutoTimer()
     hasNavigatedRef.current = true
     try {
-      const billId = getParam('billId')
-      const qs = new URLSearchParams({ action: 'unapprove' })
-      if (billId && String(billId).trim() !== '') qs.set('billId', String(billId))
-      router.push(`/features/erp/quality/fqc?${qs.toString()}`)
+      const href = buildQualityInspectionActionHref('fqc', 'unapprove', billId)
+      router.replace(href ?? '/features/erp/quality/fqc')
     } catch {
       hasNavigatedRef.current = false
     }
-  }, [router, getParam, clearAutoTimer])
+  }, [router, clearAutoTimer, billId])
 
   /**
    *

@@ -396,15 +396,19 @@ describe('FqcViewModelClass', () => {
     expect(vm.processOptions).toEqual([])
   })
 
-  test('redirectToNcrPrompt 在 assign 失败时使用 href 回退', () => {
+  test('redirectToNcrPrompt 优先使用 replace，失败时回退到 assign/href', () => {
     const vm = new FqcViewModel(createMockAppService())
+    const replace = vi.fn(() => {
+      throw new Error('replace fail')
+    })
     const assign = vi.fn(() => {
       throw new Error('assign fail')
     })
-    ;(globalThis as any).window = { location: { origin: 'http://localhost', assign, href: '' } }
+    ;(globalThis as any).window = { location: { origin: 'http://localhost', replace, assign, href: '' } }
 
     ;(vm as any).redirectToNcrPrompt(9)
 
+    expect(replace).toHaveBeenCalled()
     expect(assign).toHaveBeenCalled()
     expect((globalThis as any).window.location.href).toContain('billId=9')
     ;(globalThis as any).window = undefined as any

@@ -17,6 +17,7 @@ import { type ScanResultPayload, scanQRCode } from '@/lib/android-bridge'
 import { fetchMaterials } from '@/lib/erp/material'
 import { fetchWorkTypes } from '@/lib/erp/type-of-work'
 import { formatActionErrorMessage, resolveUserFacingErrorMessage } from '@/lib/errors/user-facing-error'
+import { buildQualityInspectionReturnTo } from '@/lib/navigation/return-to'
 import {
   FinalInspectionApplicationService,
   type FinalInspectionActionResult,
@@ -887,10 +888,14 @@ export class FqcViewModel extends QualityDocumentBase<FinalInspectionDocument, F
     url.searchParams.set('action', 'approve')
     url.searchParams.set('type', 'FQC')
     url.searchParams.set('billId', String(billId))
+    const returnTo = buildQualityInspectionReturnTo('fqc', billId)
+    if (returnTo) url.searchParams.set('returnTo', returnTo)
     try {
-      window.location.assign(url.toString())
+      window.location.replace(url.toString())
     } catch {
-      try { (window.location as any).href = url.toString() } catch { }
+      try { window.location.assign(url.toString()) } catch {
+        try { (window.location as any).href = url.toString() } catch { }
+      }
     }
   }
 

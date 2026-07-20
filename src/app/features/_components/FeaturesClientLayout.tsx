@@ -1,8 +1,12 @@
 "use client";
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { notFound, usePathname, useRouter } from "next/navigation";
+import { notFound, usePathname, useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { scanQRCode } from "@/lib/android-bridge";
+import {
+  buildQualityInspectionReturnTo,
+  normalizeInternalReturnTo,
+} from "@/lib/navigation/return-to";
 import {
   registerDocumentRefreshConfirmationHandler,
   type DocumentRefreshConfirmationOptions,
@@ -74,6 +78,8 @@ export function useFeaturesPageTitle(title?: string) {
 export default function FeaturesClientLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const searchParamString = searchParams.toString();
 
   // 由页面通过上下文设置的标题（优先级最高）。
   const [explicitTitle, setExplicitTitle] = useState<string | undefined>(undefined);
@@ -81,6 +87,24 @@ export default function FeaturesClientLayout({ children }: { children: React.Rea
 
   // 仅允许显式设置标题，删除兜底逻辑
   const title = explicitTitle;
+
+  /**
+   *
+   * 业务返回目标：
+   * - returnTo 优先，表示精确返回地址；
+   * - from/billId 作为质量检验链路的兜底语义返回。
+   *
+   */
+  const returnTarget = useMemo(() => {
+    const currentHref = `${pathname ?? ""}${searchParamString ? `?${searchParamString}` : ""}`;
+    const explicitReturnTo = normalizeInternalReturnTo(searchParams.get("returnTo"), currentHref);
+    if (explicitReturnTo) return explicitReturnTo;
+
+    return buildQualityInspectionReturnTo(
+      searchParams.get("from"),
+      searchParams.get("billId")
+    );
+  }, [pathname, searchParamString, searchParams]);
 
   // 在首帧之后校验：未显式设置标题则不允许进入（触发 404）
   useEffect(() => {
@@ -102,6 +126,10 @@ export default function FeaturesClientLayout({ children }: { children: React.Rea
 
   // 返回逻辑：如果没有历史记录则跳指定路由。
   const onBack = useCallback(() => {
+    if (returnTarget) {
+      router.replace(returnTarget);
+      return;
+    }
     if (typeof window !== "undefined" && window.history.length > 1) {
       router.back();
       return;
@@ -112,7 +140,7 @@ export default function FeaturesClientLayout({ children }: { children: React.Rea
     } else {
       router.push("/");
     }
-  }, [pathname, router]);
+  }, [pathname, router, returnTarget]);
 
   const ctxValue = useMemo<Ctx>(() => ({
     // 只接受非空标题，其余视为未设置
