@@ -37,6 +37,11 @@ type HeaderSelectOption = {
   value: string
 }
 
+type WorkTypeOption = HeaderSelectOption & {
+  /** TypeofWork.Content，用于工种下拉的内容列。 */
+  workTypeContent?: string
+}
+
 type ReworkProcessOption = HeaderSelectOption & {
   /** 工种显示名，来自流程卡明细 TypeofWorkid 对应的 TypeofWork。 */
   workTypeLabel?: string
@@ -44,7 +49,27 @@ type ReworkProcessOption = HeaderSelectOption & {
   flowDetailContent?: string
 }
 
+const workTypeDropdownClassName = "w-[min(40rem,calc(100vw-1rem))]"
 const reworkProcessDropdownClassName = "w-[min(46rem,calc(100vw-1rem))]"
+
+/**
+ *
+ * 渲染工种下拉选项的多列内容。
+ * @remarks 第二列展示 TypeofWork.Content；选中后的触发器仍使用工种名称，保持表头紧凑。
+ * @param option 工种候选项。
+ *
+ */
+function renderWorkTypeOption(option: WorkTypeOption) {
+  const workTypeName = String(option.label ?? '').trim()
+  const workTypeContent = String(option.workTypeContent ?? '').trim()
+
+  return (
+    <span className="grid w-full min-w-0 grid-cols-[minmax(3.75rem,10rem)_minmax(0,1fr)] items-start gap-x-3 gap-y-0.5 text-[13px] leading-5">
+      <span className="min-w-0 break-words font-medium">{workTypeName || '未设置工种'}</span>
+      <span className="min-w-0 break-words text-muted-foreground">{workTypeContent || '无'}</span>
+    </span>
+  )
+}
 
 /**
  *
@@ -103,6 +128,54 @@ function ReworkProcessSelect({
       style={style}
       contentClassName={reworkProcessDropdownClassName}
       renderOption={(option) => renderReworkProcessOption(option as ReworkProcessOption)}
+    />
+  )
+}
+
+/**
+ *
+ * 工种专用下拉。
+ * @remarks 仅 NCR 表头使用，负责将 TypeofWork.Name 与 TypeofWork.Content 分列展示。
+ *
+ */
+function WorkTypeSelect({
+  value,
+  onChange,
+  options,
+  ariaLabel,
+  disabled,
+  style,
+}: {
+  value: string
+  onChange: (value: string) => void
+  options: WorkTypeOption[]
+  ariaLabel: string
+  disabled?: boolean
+  style?: CSSProperties
+}) {
+  const searchableOptions = useMemo(
+    () =>
+      (options ?? []).map((option) => {
+        const workTypeContent = String(option.workTypeContent ?? '').trim()
+        if (!workTypeContent) return option
+        return { ...option, keywords: [workTypeContent] }
+      }),
+    [options],
+  )
+
+  return (
+    <Combobox
+      value={value}
+      onChange={(nextValue) => onChange(nextValue ?? '')}
+      options={searchableOptions}
+      disabled={disabled}
+      placeholder=""
+      clearable={false}
+      className="w-full min-w-0 shrink-0 text-[13px] h-[26px] min-h-[26px]"
+      ariaLabel={ariaLabel}
+      style={style}
+      contentClassName={workTypeDropdownClassName}
+      renderOption={(option) => renderWorkTypeOption(option as WorkTypeOption)}
     />
   )
 }
@@ -822,7 +895,7 @@ function HeaderSection({
   entity: DefectiveReworkOrderDocument
   materialCode: string
   onChange: (patch: Partial<DefectiveReworkOrderDocument>) => void
-  processOptions: HeaderSelectOption[]
+  processOptions: WorkTypeOption[]
   badProcessOptions: ReworkProcessOption[]
   inspectorOptions: HeaderSelectOption[]
   judgeOptions: HeaderSelectOption[]
@@ -958,7 +1031,7 @@ function HeaderSection({
           aria-label="制令单号"
         />
         <Label className="text-[13px]">工种</Label>
-        <GridSelect
+        <WorkTypeSelect
           value={view.TypeofWorkid != null ? String(view.TypeofWorkid) : ''}
           onChange={(v) =>
             onChange({

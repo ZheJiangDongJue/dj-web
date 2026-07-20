@@ -8,6 +8,8 @@ import { fetchLookup } from '@/lib/erp/lookup-core'
 export type SelectOption = {
   label: string
   value: string
+  /** TypeofWork.Content，仅工种下拉需要，用于多列展示的内容列。 */
+  workTypeContent?: string
   /** 工种显示名，仅返工工序候选需要，用于多列下拉的工种列。 */
   workTypeLabel?: string
   /** 流程卡明细表名，仅返工工序候选需要，用于返工工序切换后刷新来源草稿。 */

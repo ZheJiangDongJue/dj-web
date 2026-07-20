@@ -1727,7 +1727,14 @@ export class NcrViewModel extends QualityDocumentBase<DefectiveReworkOrderDocume
     try {
       const opts = await fetchWorkTypes()
       if (seq !== this.processOptionsFetchSeq) return
-      const basic = (opts ?? []).map((o: any) => ({ label: String(o?.label ?? ''), value: String(o?.value ?? '') }))
+      const basic = (opts ?? []).map((o: any) => {
+        const workTypeContent = String(o?.workTypeContent ?? o?.raw?.Content ?? o?.raw?.content ?? '').trim()
+        return {
+          label: String(o?.label ?? ''),
+          value: String(o?.value ?? ''),
+          ...(workTypeContent ? { workTypeContent } : {}),
+        }
+      })
       const bad = await fetchReworkFlowDetailOptionsFromUpstreamFlowCard({
         documentBase: docForOptions,
         workTypeOptions: basic,
