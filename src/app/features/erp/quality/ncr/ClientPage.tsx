@@ -13,6 +13,7 @@ import { CloseIconButton } from '@/components/ui/close-icon-button'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import Combobox from '@/components/ui/combobox'
 import GridSelect from '@/components/ui/grid-select'
 import { NumberInput } from '@/components/ui/number-input'
 import { Trash2Icon } from 'lucide-react'
@@ -30,6 +31,81 @@ import authFetch from '@/lib/auth/interceptor'
 import type { DbChangedPackResult } from '@/types/api'
 
 type DeleteRemotePhotoResult = 'success' | 'not_found' | 'error' | 'skip'
+
+type HeaderSelectOption = {
+  label: string
+  value: string
+}
+
+type ReworkProcessOption = HeaderSelectOption & {
+  /** 工种显示名，来自流程卡明细 TypeofWorkid 对应的 TypeofWork。 */
+  workTypeLabel?: string
+  /** 流程卡明细 Content，用于返工工序下拉的内容列。 */
+  flowDetailContent?: string
+}
+
+const reworkProcessDropdownClassName = "w-[min(46rem,calc(100vw-1rem))]"
+
+/**
+ *
+ * 渲染返工工序下拉选项的多列内容。
+ * @remarks
+ * - 选中后的触发器仍使用 option.label，避免紧凑表头控件高度变化；
+ * - 弹层中分列展示工种与流程卡明细 Content，便于用户比较相同工种下的不同明细。
+ * @param option 返工工序候选项。
+ *
+ */
+function renderReworkProcessOption(option: ReworkProcessOption) {
+  const workTypeLabel = String(option.workTypeLabel ?? option.label ?? '').trim()
+  const flowDetailContent = String(option.flowDetailContent ?? '').trim()
+
+  return (
+    <span className="grid w-full min-w-0 grid-cols-[minmax(3.75rem,12rem)_minmax(0,1fr)] items-start gap-x-3 gap-y-0.5 text-[13px] leading-5">
+      <span className="min-w-0 break-words font-medium">{workTypeLabel || '未设置工序'}</span>
+      <span className="min-w-0 break-words text-muted-foreground">{flowDetailContent || '无'}</span>
+    </span>
+  )
+}
+
+/**
+ *
+ * 返工工序专用下拉。
+ * @remarks
+ * - 仅 NCR 表头使用，负责多列弹层与较宽内容区；
+ * - 不复用 GridSelect 的原因是多列弹层属于返工工序业务展示，不应反向污染通用紧凑下拉组件。
+ *
+ */
+function ReworkProcessSelect({
+  value,
+  onChange,
+  options,
+  ariaLabel,
+  disabled,
+  style,
+}: {
+  value: string
+  onChange: (value: string) => void
+  options: ReworkProcessOption[]
+  ariaLabel: string
+  disabled?: boolean
+  style?: CSSProperties
+}) {
+  return (
+    <Combobox
+      value={value}
+      onChange={(nextValue) => onChange(nextValue ?? '')}
+      options={options}
+      disabled={disabled}
+      placeholder=""
+      clearable={false}
+      className="w-full min-w-0 shrink-0 text-[13px] h-[26px] min-h-[26px]"
+      ariaLabel={ariaLabel}
+      style={style}
+      contentClassName={reworkProcessDropdownClassName}
+      renderOption={(option) => renderReworkProcessOption(option as ReworkProcessOption)}
+    />
+  )
+}
 
 // PhotoGrid 会维护较多内部状态（缩略图缓存/覆盖层预览等）。
 // 表头“实时联动”会频繁触发 VM emit，因此这里对 PhotoGrid 做 memo，避免在 props 未变化时重复渲染。
@@ -746,10 +822,10 @@ function HeaderSection({
   entity: DefectiveReworkOrderDocument
   materialCode: string
   onChange: (patch: Partial<DefectiveReworkOrderDocument>) => void
-  processOptions: { label: string; value: string }[]
-  badProcessOptions: { label: string; value: string }[]
-  inspectorOptions: { label: string; value: string }[]
-  judgeOptions: { label: string; value: string }[]
+  processOptions: HeaderSelectOption[]
+  badProcessOptions: ReworkProcessOption[]
+  inspectorOptions: HeaderSelectOption[]
+  judgeOptions: HeaderSelectOption[]
   toNonNegInt: (v: number | '' | undefined) => number
   onReworkFlowDetailChange: (field: 'ReworkTypeofWorkid' | 'ReworkTypeofWork2id', value: string) => void
   sourceDraftReloadBusy: boolean
@@ -938,7 +1014,7 @@ function HeaderSection({
       {/* 第四行：返工工序、返工工序2 */}      
       <div className="grid grid-cols-[auto_1fr_auto_1fr] items-center gap-x-0.5">
         <Label className={`text-[13px] ${reworkProcessLabelClass}`}>返工工序</Label>
-        <GridSelect
+        <ReworkProcessSelect
           value={view.ReworkTypeofWorkid != null ? String(view.ReworkTypeofWorkid) : ''}
           onChange={(v) => onReworkFlowDetailChange('ReworkTypeofWorkid', v)}
           options={reworkProcessOptions}
@@ -947,7 +1023,7 @@ function HeaderSection({
           disabled={readOnly || sourceDraftReloadBusy}
         />
         <Label className="text-[13px]">返工工序2</Label>
-        <GridSelect
+        <ReworkProcessSelect
           value={view.ReworkTypeofWork2id != null ? String(view.ReworkTypeofWork2id) : ''}
           onChange={(v) => onReworkFlowDetailChange('ReworkTypeofWork2id', v)}
           options={reworkProcess2Options}

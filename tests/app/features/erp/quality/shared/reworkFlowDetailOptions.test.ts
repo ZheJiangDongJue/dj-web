@@ -59,13 +59,13 @@ describe('NCR 返工工序候选（对齐 ERPClient）', () => {
     const fetcher: FetchLookupFn = async (table, _select, _orderBy, opts) => {
       if (table === 'ProcessAssemblyFlowDetail' && (opts as any)?.where?.ParentTypeid === 10) {
         return [
-          { id: 1, TypeofWorkid: 10, LocationIndex: 1 },
-          { id: 2, TypeofWorkid: 20, LocationIndex: 2 },
+          { id: 1, TypeofWorkid: 10, LocationIndex: 1, Content: '打磨返修' },
+          { id: 2, TypeofWorkid: 20, LocationIndex: 2, Content: '  ' },
         ]
       }
       if (table === 'ProcessAssemblyFlowDetail' && (opts as any)?.where?.id === 999) return []
       if (table === 'ProduceFlowDetail' && (opts as any)?.where?.id === 999) {
-        return [{ id: 999, TypeofWorkid: 30, LocationIndex: 0.5 }]
+        return [{ id: 999, TypeofWorkid: 30, LocationIndex: 0.5, Content: '生产返修说明' }]
       }
       return []
     }
@@ -83,15 +83,16 @@ describe('NCR 返工工序候选（对齐 ERPClient）', () => {
     )
 
     expect(options.map((o) => o.value)).toEqual(['999', '1', '2'])
-    expect(options[0]?.label).toBe('工序ID=30')
-    expect(options[1]?.label).toBe('工序A')
+    expect(options[0]?.label).toBe('工序ID=30 : 生产返修说明')
+    expect(options[1]?.label).toBe('工序A : 打磨返修')
+    expect(options[1]?.flowDetailContent).toBe('打磨返修')
     expect(options[2]?.label).toBe('工序B')
   })
 
   it('fetchReworkFlowDetailOptionsFromUpstreamFlowCard：未命中上游流程卡时仍可按已选明细回显', async () => {
     const fetcher: FetchLookupFn = async (table, _select, _orderBy, opts) => {
       if (table === 'ProcessAssemblyFlowDetail' && (opts as any)?.where?.id === 123) {
-        return [{ id: 123, TypeofWorkid: 10, LocationIndex: 1 }]
+        return [{ id: 123, TypeofWorkid: 10, LocationIndex: 1, Content: '已选返工内容' }]
       }
       return []
     }
@@ -105,7 +106,15 @@ describe('NCR 返工工序候选（对齐 ERPClient）', () => {
       fetcher,
     )
 
-    expect(options).toEqual([{ label: '工序A', value: '123' }])
+    expect(options).toEqual([
+      {
+        label: '工序A : 已选返工内容',
+        value: '123',
+        workTypeLabel: '工序A',
+        flowDetailTableName: 'ProcessAssemblyFlowDetail',
+        flowDetailContent: '已选返工内容',
+      },
+    ])
   })
 
   it('resolveUpstreamFlowDetailIdFromDocumentBase：优先使用 CreateByDetailType', async () => {

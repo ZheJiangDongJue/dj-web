@@ -8,8 +8,12 @@ import { fetchLookup } from '@/lib/erp/lookup-core'
 export type SelectOption = {
   label: string
   value: string
+  /** 工种显示名，仅返工工序候选需要，用于多列下拉的工种列。 */
+  workTypeLabel?: string
   /** 流程卡明细表名，仅返工工序候选需要，用于返工工序切换后刷新来源草稿。 */
   flowDetailTableName?: ReworkFlowDetailTableName
+  /** 流程卡明细内容，仅返工工序候选需要，用于在下拉列表中补充说明具体工序内容。 */
+  flowDetailContent?: string
 }
 
 /**
@@ -82,6 +86,23 @@ function resolveWorkTypeNameFromOptions(options: SelectOption[], id?: number): s
   const key = String(Math.floor(n))
   const hit = (options ?? []).find((o) => String(o.value) === key)
   return String(hit?.label ?? '').trim()
+}
+
+/**
+ *
+ * 组合返工工序下拉显示文本。
+ * @remarks
+ * - 返工工序的值仍是流程卡明细 id，标签中补充明细 Content 只是为了让用户识别具体工序实例；
+ * - Content 为空时保持原有工种名称，避免出现空分隔符。
+ * @param workTypeName 工种名称或兜底文本。
+ * @param flowDetailContent 流程卡明细的 Content。
+ *
+ */
+function formatReworkOptionLabel(workTypeName: string, flowDetailContent: unknown): string {
+  const name = String(workTypeName ?? '').trim()
+  const content = String(flowDetailContent ?? '').trim()
+  if (!content) return name
+  return `${name} : ${content}`
 }
 
 function getFetchLookupFn(fetchLookupFn?: FetchLookupFn): FetchLookupFn {
@@ -373,7 +394,7 @@ async function fetchFlowDetailRowById(
   try {
     const assemblyRows = await fetcher(
       TABLE.assemblyDetail,
-      ['id', 'TypeofWorkid', 'LocationIndex', 'ParentTypeid'],
+      ['id', 'TypeofWorkid', 'LocationIndex', 'ParentTypeid', 'Content'],
       undefined,
       { where: { DeletedTag: 0, id: flowDetailId }, take: 1 },
     )
@@ -384,7 +405,7 @@ async function fetchFlowDetailRowById(
   try {
     const produceRows = await fetcher(
       TABLE.produceDetail,
-      ['id', 'TypeofWorkid', 'LocationIndex', 'ParentTypeid'],
+      ['id', 'TypeofWorkid', 'LocationIndex', 'ParentTypeid', 'Content'],
       undefined,
       { where: { DeletedTag: 0, id: flowDetailId }, take: 1 },
     )
@@ -404,10 +425,17 @@ function toReworkOption(
   if (!id) return null
 
   const typeofWorkId = normalizePositiveInt(row?.TypeofWorkid ?? row?.typeofWorkid) ?? undefined
+  const flowDetailContent = String(row?.Content ?? row?.content ?? '').trim()
 
   const nameFromWorkType = resolveWorkTypeNameFromOptions(workTypeOptions, typeofWorkId)
   const name = nameFromWorkType || (typeofWorkId ? `工序ID=${typeofWorkId}` : '未设置工序')
-  return { label: name, value: String(id), flowDetailTableName }
+  return {
+    label: formatReworkOptionLabel(name, flowDetailContent),
+    value: String(id),
+    workTypeLabel: name,
+    flowDetailTableName,
+    ...(flowDetailContent ? { flowDetailContent } : {}),
+  }
 }
 
 /**
@@ -435,7 +463,7 @@ export async function fetchReworkFlowDetailOptionsFromUpstreamFlowCard(
   if (resolved) {
     const rows = await fetcher(
       resolved.flowDetailTableName,
-      ['id', 'TypeofWorkid', 'LocationIndex', 'ParentTypeid'],
+      ['id', 'TypeofWorkid', 'LocationIndex', 'ParentTypeid', 'Content'],
       'LocationIndex asc, id asc',
       { where: { DeletedTag: 0, ParentTypeid: resolved.flowDocumentId } },
     )
