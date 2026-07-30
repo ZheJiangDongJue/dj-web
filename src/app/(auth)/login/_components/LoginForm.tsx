@@ -15,13 +15,6 @@ import {
 } from '@/lib/auth/login-credential-storage'
 import { resolveTarget, redirect } from '@/lib/auth/redirector'
 import ErrorBanner from './ErrorBanner'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
 import { Eye, EyeOff } from 'lucide-react'
 
@@ -34,12 +27,6 @@ interface Props {
    */
   app?: AppCode
 }
-
-const APP_OPTIONS: { label: string; value: AppCode }[] = [
-  { label: 'ERP', value: 'erp' },
-  { label: 'OA', value: 'oa' },
-  { label: 'BI', value: 'bi' },
-]
 
 function isAppCode(v: string): v is AppCode {
   return v === 'erp' || v === 'oa' || v === 'bi'
@@ -57,29 +44,30 @@ export default function LoginForm({ className, app }: Props) {
   }, [search])
   // 仅在首次渲染读取一次本地凭据；helper 内部已处理 SSR 与 localStorage 异常。
   const [savedCredentials] = React.useState(() => readSavedLoginCredentials())
+  // 密码持久化偏好与已保存的账号独立，未勾选时仍应回填用户名但保持未勾选状态。
+  const [rememberPassword, setRememberPassword] = React.useState(() => savedCredentials?.rememberPassword ?? false)
   // 优先使用 props.app；否则从 URL 查询参数读取；最终回退为 'erp'
   const initialApp = React.useMemo<AppCode>(
     () => (app ?? urlApp ?? savedCredentials?.app ?? 'erp'),
     [app, savedCredentials?.app, urlApp]
   )
-  const [selectedApp, setSelectedApp] = React.useState<AppCode>(initialApp)
-  const selectedAppRef = React.useRef<AppCode>(initialApp)
+  // 目标应用由调用方、URL 或已保存记录决定，不再由登录页提供下拉选择。
+  const [targetApp, setTargetApp] = React.useState<AppCode>(initialApp)
 
-  const updateSelectedApp = React.useCallback((next: AppCode) => {
-    selectedAppRef.current = next
-    setSelectedApp(next)
+  const updateTargetApp = React.useCallback((next: AppCode) => {
+    setTargetApp(next)
   }, [])
 
   // 当外部指定 app 或 URL 参数变化时同步；无显式来源时允许本地保存的目标应用接管。
   React.useEffect(() => {
     if (app) {
-      updateSelectedApp(app)
+      updateTargetApp(app)
       return
     }
     if (urlApp) {
-      updateSelectedApp(urlApp)
+      updateTargetApp(urlApp)
     }
-  }, [app, updateSelectedApp, urlApp])
+  }, [app, updateTargetApp, urlApp])
   const {
     register,
     handleSubmit,
@@ -106,13 +94,14 @@ export default function LoginForm({ className, app }: Props) {
     })
 
     if (!app && !urlApp) {
-      updateSelectedApp(saved.app)
+      updateTargetApp(saved.app)
     }
-  }, [app, reset, updateSelectedApp, urlApp])
+    setRememberPassword(saved.rememberPassword)
+  }, [app, reset, updateTargetApp, urlApp])
 
   const onSubmit = handleSubmit(async (values) => {
     setErrorMsg(null)
-    const effectiveApp = selectedAppRef.current
+    const effectiveApp = targetApp
     try {
       const res = await AuthService.login({
         username: values.username,
@@ -132,10 +121,12 @@ export default function LoginForm({ className, app }: Props) {
         localStorage.setItem('erp:dbName', DEFAULT_DB_NAME)
         localStorage.setItem('erp:userInfo', JSON.stringify({ id: res.user.id, name: res.user.name, loginName: values.username }))
       } catch { /* ignore */ }
+      // 无论是否勾选都保留账号；密码仅在用户明确允许时写入本地存储。
       saveLoginCredentials({
         app: effectiveApp,
         username: values.username,
         password: values.password,
+        rememberPassword,
       })
       // 触发后续 effect 执行 Cookie 写入 + 跳转
       setPendingRedirectApp(effectiveApp)
@@ -189,44 +180,6 @@ export default function LoginForm({ className, app }: Props) {
 
       {/* 错误提示 */}
       <ErrorBanner message={errorMsg ?? undefined} onClose={() => setErrorMsg(null)} autoHideMs={8000} />
-
-      {/* 应用选择 */}
-      <div className="l-grid">
-        <label htmlFor="app" className="text-sm font-medium">
-          目标应用
-        </label>
-        <Select
-          value={selectedApp}
-          onValueChange={(v) => {
-            const next = isAppCode(v) ? v : 'erp'
-            updateSelectedApp(next)
-            // 同步到 URL，便于刷新/分享
-            try {
-              const url = new URL(window.location.href)
-              url.searchParams.set('app', next)
-              window.history.replaceState(null, '', url)
-            } catch {
-              // 忽略 URL 更新失败
-            }
-          }}
-          disabled={isSubmitting}
-        >
-          <SelectTrigger
-            id="app"
-            aria-label="选择要登录的应用"
-            className="t-field h-11 w-full px-3 disabled:opacity-60"
-          >
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent align="start">
-            {APP_OPTIONS.map((opt) => (
-              <SelectItem key={opt.value} value={opt.value}>
-                {opt.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
 
       <div className="l-grid">
         <label htmlFor="username" className="text-sm font-medium">
@@ -291,6 +244,20 @@ export default function LoginForm({ className, app }: Props) {
             {errors.password.message}
           </p>
         )}
+      </div>
+
+      <div className="l-row gap-2">
+        <input
+          id="remember-password"
+          type="checkbox"
+          checked={rememberPassword}
+          onChange={(event) => setRememberPassword(event.target.checked)}
+          disabled={isSubmitting}
+          className="h-4 w-4 shrink-0 cursor-pointer accent-[var(--color-accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)] disabled:cursor-not-allowed disabled:opacity-60"
+        />
+        <label htmlFor="remember-password" className="cursor-pointer select-none text-sm t-text-secondary">
+          记住密码
+        </label>
       </div>
 
       <button

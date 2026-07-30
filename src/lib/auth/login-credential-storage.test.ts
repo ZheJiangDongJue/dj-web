@@ -19,6 +19,7 @@ describe('login-credential-storage', () => {
       app: 'erp',
       username: 'demo',
       password: '123456',
+      rememberPassword: true,
     })
 
     const saved = readSavedLoginCredentials()
@@ -26,6 +27,7 @@ describe('login-credential-storage', () => {
       app: 'erp',
       username: 'demo',
       password: '123456',
+      rememberPassword: true,
     })
     expect(typeof saved?.savedAt).toBe('string')
 
@@ -68,7 +70,41 @@ describe('login-credential-storage', () => {
     })
 
     expect(readSavedLoginCredentials()).toBeNull()
-    expect(() => saveLoginCredentials({ app: 'erp', username: 'u', password: 'p' })).not.toThrow()
+    expect(() => saveLoginCredentials({ app: 'erp', username: 'u', password: 'p', rememberPassword: true })).not.toThrow()
     expect(() => clearSavedLoginCredentials()).not.toThrow()
+  })
+
+  it('未选择记住密码时仅保存账号与目标应用', () => {
+    saveLoginCredentials({
+      app: 'oa',
+      username: 'demo',
+      password: '123456',
+      rememberPassword: false,
+    })
+
+    expect(readSavedLoginCredentials()).toMatchObject({
+      app: 'oa',
+      username: 'demo',
+      password: '',
+      rememberPassword: false,
+    })
+  })
+
+  it('兼容此前未记录密码持久化偏好的完整凭据', () => {
+    window.localStorage.setItem(
+      LOGIN_CREDENTIAL_STORAGE_KEY,
+      JSON.stringify({
+        app: 'erp',
+        username: 'legacy-user',
+        password: 'legacy-password',
+        savedAt: '2026-01-01T00:00:00.000Z',
+      })
+    )
+
+    expect(readSavedLoginCredentials()).toMatchObject({
+      username: 'legacy-user',
+      password: 'legacy-password',
+      rememberPassword: true,
+    })
   })
 })

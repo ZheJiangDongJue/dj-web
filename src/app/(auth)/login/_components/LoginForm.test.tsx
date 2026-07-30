@@ -115,6 +115,7 @@ describe('LoginForm', () => {
       app: 'oa',
       username: 'saved-user',
       password: 'saved-password',
+      rememberPassword: true,
       savedAt: '2026-01-01T00:00:00.000Z',
     })
 
@@ -126,6 +127,7 @@ describe('LoginForm', () => {
     await waitFor(() => {
       expect(username.value).toBe('saved-user')
       expect(password.value).toBe('saved-password')
+      expect((screen.getByLabelText('记住密码') as HTMLInputElement).checked).toBe(true)
     })
 
     await submitLogin()
@@ -147,6 +149,7 @@ describe('LoginForm', () => {
       app: 'erp',
       username: 'after-mount-user',
       password: 'after-mount-password',
+      rememberPassword: true,
       savedAt: '2026-01-01T00:00:00.000Z',
     })
 
@@ -160,6 +163,25 @@ describe('LoginForm', () => {
     await waitFor(() => {
       expect(username.value).toBe('after-mount-user')
       expect(password.value).toBe('after-mount-password')
+      expect((screen.getByLabelText('记住密码') as HTMLInputElement).checked).toBe(true)
+    })
+  })
+
+  it('仅保存账号的记录回填用户名但不回填密码或勾选记住密码', async () => {
+    saveRawCredentials({
+      app: 'erp',
+      username: 'account-only-user',
+      password: '',
+      rememberPassword: false,
+      savedAt: '2026-01-01T00:00:00.000Z',
+    })
+
+    render(<LoginForm />)
+
+    await waitFor(() => {
+      expect((screen.getByLabelText('用户名') as HTMLInputElement).value).toBe('account-only-user')
+      expect((screen.getByLabelText('密码') as HTMLInputElement).value).toBe('')
+      expect((screen.getByLabelText('记住密码') as HTMLInputElement).checked).toBe(false)
     })
   })
 
@@ -169,6 +191,7 @@ describe('LoginForm', () => {
       app: 'oa',
       username: 'saved-user',
       password: 'saved-password',
+      rememberPassword: true,
       savedAt: '2026-01-01T00:00:00.000Z',
     })
 
@@ -191,6 +214,7 @@ describe('LoginForm', () => {
       app: 'oa',
       username: 'saved-user',
       password: 'saved-password',
+      rememberPassword: true,
       savedAt: '2026-01-01T00:00:00.000Z',
     })
 
@@ -208,7 +232,14 @@ describe('LoginForm', () => {
     )
   })
 
-  it('登录成功后保存最新用户名、密码和目标应用', async () => {
+  it('登录页不再展示目标应用下拉选择', () => {
+    render(<LoginForm />)
+
+    expect(screen.queryByRole('combobox')).toBeNull()
+    expect(screen.queryByLabelText('目标应用')).toBeNull()
+  })
+
+  it('勾选记住密码后保存最新用户名、密码和目标应用', async () => {
     render(<LoginForm app="erp" />)
 
     fireEvent.change(screen.getByLabelText('用户名'), {
@@ -217,6 +248,7 @@ describe('LoginForm', () => {
     fireEvent.change(screen.getByLabelText('密码'), {
       target: { value: 'fresh-password' },
     })
+    fireEvent.click(screen.getByLabelText('记住密码'))
 
     await submitLogin()
 
@@ -227,7 +259,32 @@ describe('LoginForm', () => {
       app: 'erp',
       username: 'fresh-user',
       password: 'fresh-password',
+      rememberPassword: true,
     })
     expect(typeof saved.savedAt).toBe('string')
+  })
+
+  it('未勾选记住密码登录时仅保留最新用户名', async () => {
+    saveRawCredentials({
+      app: 'erp',
+      username: 'saved-user',
+      password: 'saved-password',
+      rememberPassword: true,
+      savedAt: '2026-01-01T00:00:00.000Z',
+    })
+    render(<LoginForm app="erp" />)
+
+    fireEvent.click(screen.getByLabelText('记住密码'))
+
+    await submitLogin()
+
+    const raw = window.localStorage.getItem(LOGIN_CREDENTIAL_STORAGE_KEY)
+    expect(raw).not.toBeNull()
+    expect(JSON.parse(raw ?? '{}')).toMatchObject({
+      app: 'erp',
+      username: 'saved-user',
+      password: '',
+      rememberPassword: false,
+    })
   })
 })
