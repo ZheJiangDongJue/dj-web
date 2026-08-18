@@ -902,7 +902,7 @@ export type NcrScanFlowDetailCandidate = FlowDetailCandidate
    * 按 ERPClient 一致的默认顺序生成日计划 NCR 草稿。
    * @remarks
    * - 不预先用 FlowScan 缩小到“当前工序明细”，避免偏离后端默认候选排序；\n
-   * - 后端排序：接收顺序 -> 来源单据类型默认顺序 -> 工序顺序 -> 明细 id -> 最新来源单据。
+   * - 后端会扫描日计划作用域内的直接/下游流程卡，按接收顺序 -> 来源单据类型默认顺序 -> 工序顺序 -> 明细 id -> 最新来源单据排序。
    *
    */
   private async createDraftByDailyPlanDefaultOrder(
@@ -938,7 +938,7 @@ export type NcrScanFlowDetailCandidate = FlowDetailCandidate
    *
    * 按 ERPClient 扫码入口一致的规则，先查询日计划下游子孙最新 NCR。
    * @remarks
-   * - 这里只判断“已有单据是否应打开”，不参与草稿来源候选排序；\n
+   * - 后端只判断默认排序第一来源是否存在仍在处理的单据，不参与草稿来源排序；\n
    * - 若查询失败，降级继续走草稿生成，避免扫码主流程被只读检查阻断。
    *
    */

@@ -278,7 +278,7 @@ export async function GetDefectiveReworkOrderDraftByDailyPlanScanCode<
 
 /**
  *
- * 扫描日计划条码查询其下游子孙最新一张不合格返工单。
+ * 扫描日计划条码查询默认来源上的不合格返工单。
  * 对应 C#: [HttpPost] GetLatestDefectiveReworkOrderIdByDailyPlanScanCode([FromBody] CreateDefectiveReworkOrderByDailyPlanScanCodeRequest request)
  *
  */
