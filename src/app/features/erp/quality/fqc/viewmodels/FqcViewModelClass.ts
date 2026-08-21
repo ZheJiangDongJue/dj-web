@@ -24,6 +24,7 @@ import {
   type FinalInspectionScanResult,
 } from '@/application/quality/fqc/FinalInspectionApplicationService'
 import type { FlowDetailCandidate } from '@/application/quality/shared/flowDetailCandidates'
+import type { FqcLookupSnapshot } from '../FqcLookupTypes'
 import { FinalInspectionRepositoryImpl } from '@/infrastructure/repositories/quality/FinalInspectionRepositoryImpl'
 import {
   AppServicesContext,
@@ -137,6 +138,13 @@ export class FqcViewModel extends QualityDocumentBase<FinalInspectionDocument, F
    *
    */
   private readonly appService: FinalInspectionApplicationService
+  /**
+   * FQC 中间页的客户端路由回调。
+   * @remarks
+   * ViewModel 不直接依赖 Next Router；由 FQC 页面在挂载期间注入，
+   * 使 FQC 与中间页之间可以使用客户端替换导航并保留共享布局状态。
+   */
+  private ncrPromptNavigation: ((href: string) => void) | null = null
   /**
    *
    * 最近一次审批/反审批结果。
@@ -794,6 +802,14 @@ export class FqcViewModel extends QualityDocumentBase<FinalInspectionDocument, F
   }
 
   /**
+   * 设置 FQC 到 NCR 中间页的客户端导航回调。
+   * @param navigate Next Router 的 replace 回调；传入 null 表示页面已卸载。
+   */
+  public setNcrPromptNavigation(navigate: ((href: string) => void) | null): void {
+    this.ncrPromptNavigation = navigate
+  }
+
+  /**
    *
    * 反审批（通过 runBusyAction 包装，提供"反审批中…"加载反馈与防重入）。
    *
@@ -890,6 +906,17 @@ export class FqcViewModel extends QualityDocumentBase<FinalInspectionDocument, F
     url.searchParams.set('billId', String(billId))
     const returnTo = buildQualityInspectionReturnTo('fqc', billId)
     if (returnTo) url.searchParams.set('returnTo', returnTo)
+
+    const href = `${url.pathname}${url.search}`
+    if (this.ncrPromptNavigation) {
+      try {
+        this.ncrPromptNavigation(href)
+        return
+      } catch {
+        // 客户端路由异常时继续使用浏览器导航兜底。
+      }
+    }
+
     try {
       window.location.replace(url.toString())
     } catch {
@@ -897,6 +924,28 @@ export class FqcViewModel extends QualityDocumentBase<FinalInspectionDocument, F
         try { (window.location as any).href = url.toString() } catch { }
       }
     }
+  }
+
+  /**
+   * 将 FQC 路由共享布局提供的基础联查快照同步到当前 ViewModel。
+   * @param snapshot 共享布局中的基础联查快照。
+   * @remarks
+   * - 只同步检验员、物料索引和工序选项；
+   * - 不同步单据与明细，避免用旧页面数据覆盖 `openById` 的最新结果；
+   * - 对数组和索引做浅复制，避免 ViewModel 修改共享状态。
+   */
+  public applyLookupSnapshot(snapshot: FqcLookupSnapshot): void {
+    this.inspectorOptions = snapshot.inspectorOptions.map((option) => ({ ...option }))
+    this.materialIndex = Object.fromEntries(
+      Object.entries(snapshot.materialIndex).map(([id, value]) => [id, { ...value }]),
+    )
+    this.processOptions = snapshot.processOptions.map((option) => ({ ...option }))
+    this.processIndex = Object.fromEntries(
+      this.processOptions.map((option) => [String(option.value), option.label]),
+    )
+    this.updateMaterialCodeFromBill()
+    this.updateProcessNameFromBill()
+    this.emit()
   }
 
   /**

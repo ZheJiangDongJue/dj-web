@@ -378,6 +378,27 @@ describe('FqcViewModelClass', () => {
     expect(vm.inspectorOptions).toEqual([{ label: '张三', value: '1' }])
   })
 
+  test('applyLookupSnapshot 同步接收共享基础数据，不触发联查请求', () => {
+    const vm = new FqcViewModel(createMockAppService())
+    vm.setBill('Materialid', 11)
+    vm.setBill('TypeofWorkid', 2)
+
+    vm.applyLookupSnapshot({
+      phase: 'ready',
+      inspectorStatus: 'ready',
+      materialStatus: 'ready',
+      processStatus: 'ready',
+      inspectorOptions: [{ label: '张三', value: '1' }],
+      materialIndex: { '11': { code: 'MAT-001', name: '物料A' } },
+      processOptions: [{ label: '工序B', value: '2' }],
+      errors: {},
+    })
+
+    expect(vm.inspectorOptions).toEqual([{ label: '张三', value: '1' }])
+    expect(vm.materialCode).toBe('MAT-001')
+    expect(vm.processName).toBe('工序B')
+  })
+
   test('load 选项失败时使用兜底值并不中断', async () => {
     const { fetchActiveEmployees } = await import('@/lib/erp/employee')
     ;(fetchActiveEmployees as Mock).mockRejectedValue(new Error('fail'))
@@ -411,6 +432,22 @@ describe('FqcViewModelClass', () => {
     expect(replace).toHaveBeenCalled()
     expect(assign).toHaveBeenCalled()
     expect((globalThis as any).window.location.href).toContain('billId=9')
+    ;(globalThis as any).window = undefined as any
+  })
+
+  test('redirectToNcrPrompt 有客户端路由回调时不触发整页刷新', () => {
+    const vm = new FqcViewModel(createMockAppService())
+    const navigate = vi.fn()
+    const replace = vi.fn()
+    ;(globalThis as any).window = { location: { origin: 'http://localhost', replace } }
+
+    vm.setNcrPromptNavigation(navigate)
+    ;(vm as any).redirectToNcrPrompt(9)
+
+    expect(navigate).toHaveBeenCalledWith(
+      '/features/erp/quality/fqc/ncr-prompt?from=fqc&action=approve&type=FQC&billId=9&returnTo=%2Ffeatures%2Ferp%2Fquality%2Ffqc%3Fid%3D9',
+    )
+    expect(replace).not.toHaveBeenCalled()
     ;(globalThis as any).window = undefined as any
   })
 

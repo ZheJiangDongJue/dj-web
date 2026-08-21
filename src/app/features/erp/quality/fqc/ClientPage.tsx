@@ -1,8 +1,7 @@
 'use client'
 import { useFeaturesPageTitle } from '@/app/features/_components'
-import { memo, useCallback, useEffect, useId, useMemo, useRef, type CSSProperties } from 'react'
+import { memo, useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { toast } from 'sonner'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import GridSelect from '@/components/ui/grid-select'
@@ -22,7 +21,7 @@ import { hasStatusFlag, documentStatusToText } from '../shared/helpers'
 import FlowDetailPickDialog from '../shared/FlowDetailPickDialog'
 import { MeasureRecordInput } from '../shared/MeasureRecordInput'
 import { MeasureRequiredRegistrar } from '../shared/MeasureRequiredRegistrar'
-import { QualityPageWarmupStrip, useQualityPageWarmup } from '../shared/pageWarmup'
+import { FqcLookupWarmupStrip, useFqcLookup } from './FqcLookupProvider'
 
 /**
  *
@@ -89,48 +88,58 @@ function FqcBody({ rowGap, initialScanCode }: { rowGap: number; initialScanCode?
   const vmStore = useFqcVM()
   const vm = useFqcExternal(vmStore)
   const router = useRouter()
+  const lookup = useFqcLookup()
   const searchParams = useSearchParams()
   const queryId = searchParams.get('id')
-  const queryBillId = searchParams.get('billId')
-  const queryAction = searchParams.get('action')
   const queryScanCode = searchParams.get('scancode')
   const lastAutoOpenKeyRef = useRef<string | null>(null)
-  const lastAutoActionKeyRef = useRef<string | null>(null)
-  const warmupTasks = useMemo(
-    () => [
-      { key: 'inspector', label: '检验员', run: () => vm.loadInspectorOptions?.() },
-      { key: 'material', label: '物料', run: () => vm.loadMaterialOptions?.() },
-      { key: 'process', label: '工序', run: () => vm.loadProcessOptions?.() },
-    ],
-    [vm],
-  )
-  const warmupState = useQualityPageWarmup({ tasks: warmupTasks, successHoldMs: 1800 })
-  const isPagePreparing = !warmupState.interactive
+  const openRequestSeqRef = useRef(0)
+  const [isOpeningById, setIsOpeningById] = useState(() => parseBillIdFromQuery(queryId) !== null)
+
+  useEffect(() => {
+    vm.applyLookupSnapshot(lookup)
+  }, [lookup, vm])
+
+  useEffect(() => {
+    vm.setNcrPromptNavigation((href) => router.replace(href))
+    return () => vm.setNcrPromptNavigation(null)
+  }, [router, vm])
+
+  // 共享基础联查完成后仍需等待 ?id 对应的单据加载完成，避免用户在空白默认单据上误操作。
+  const isPagePreparing = lookup.phase === 'idle' || lookup.phase === 'loading' || isOpeningById
 
   // 当前检验工序由单据字段 TypeofWorkid 控制，不再在 View 层推导选中项
 
   // 支持 URL 参数自动打开：
   // 1) ?id=Number：直接打开末件检验单据
-  //    ?billId=Number：兼容中间页透传的单据ID（避免回跳后出现空单据）
   // 2) ?scancode=RJH-...：按日计划明细条码生成/打开末件检验草稿（避免与扫码入口重复逻辑）
   useEffect(() => {
-    // 反审批回跳由专用 effect 处理：避免与常规“自动打开”发生竞态/重复请求
-    const action = String(queryAction ?? '').trim().toLowerCase()
-    if (action === 'unapprove') return
-
     // 1) 优先处理单据ID：避免同时存在 id 与 scancode 时发生覆盖/竞态
-    const rawId = String(queryId ?? queryBillId ?? '').trim()
+    const rawId = String(queryId ?? '').trim()
     if (rawId) {
       const billId = parseBillIdFromQuery(rawId)
       if (billId) {
         const key = `id:${billId}`
         if (lastAutoOpenKeyRef.current !== key) {
           lastAutoOpenKeyRef.current = key
-          void vm.openById?.(billId)
+          const requestSeq = openRequestSeqRef.current + 1
+          openRequestSeqRef.current = requestSeq
+          setIsOpeningById(true)
+          void (async () => {
+            try {
+              await vm.openById?.(billId)
+            } finally {
+              if (openRequestSeqRef.current === requestSeq) setIsOpeningById(false)
+            }
+          })()
         }
         return
       }
     }
+
+    // 当前 URL 不再指向单据时，终止上一轮打开请求对页面准备态的影响。
+    openRequestSeqRef.current += 1
+    setIsOpeningById(false)
 
     // 2) 处理 scancode（优先使用客户端 searchParams，其次使用服务端透传的初始值）
     const rawScanCode = (queryScanCode ?? initialScanCode ?? '').trim()
@@ -139,41 +148,7 @@ function FqcBody({ rowGap, initialScanCode }: { rowGap: number; initialScanCode?
     if (lastAutoOpenKeyRef.current === key) return
     lastAutoOpenKeyRef.current = key
     void vm.tryOpenFinalInspectionByDailyPlanDetailScanCode(rawScanCode)
-  }, [queryId, queryBillId, queryAction, queryScanCode, initialScanCode, vm])
-
-  // 支持中间页“反审批”回跳：
-  // - 回跳 URL: /features/erp/quality/fqc?action=unapprove&billId=...
-  // - 期望行为：先恢复回跳前的单据状态（打开对应单据），再自动触发反审批；成功后停留在该单据的未审批状态
-  useEffect(() => {
-    const action = String(queryAction ?? '').trim().toLowerCase()
-    if (action !== 'unapprove') return
-
-    const billId = parseBillIdFromQuery(queryId) ?? parseBillIdFromQuery(queryBillId)
-    if (!billId) {
-      try { toast.error('反审批失败：未获取到有效单据ID') } catch {}
-      try { router.replace('/features/erp/quality/fqc') } catch {}
-      return
-    }
-
-    const key = `unapprove:${billId}`
-    if (lastAutoActionKeyRef.current === key) return
-    lastAutoActionKeyRef.current = key
-
-    void (async () => {
-      const opened = await vm.openById?.(billId)
-      if (!opened) {
-        try { toast.error(`未找到单据：${billId}`) } catch {}
-        try { router.replace(`/features/erp/quality/fqc?id=${billId}`) } catch {}
-        return
-      }
-
-      try { await vm.handleUnapprove?.() } catch {}
-      // 打开成功后更新去重 key，避免 replace 后再次触发 openById
-      lastAutoOpenKeyRef.current = `id:${billId}`
-      // 无论成功与否，都清理 action 参数，避免刷新/返回导致重复触发
-      try { router.replace(`/features/erp/quality/fqc?id=${billId}`) } catch {}
-    })()
-  }, [queryAction, queryId, queryBillId, vm, router])
+  }, [queryId, queryScanCode, initialScanCode, vm])
 
   const workTypeLabelById = useCallback(
     (id?: number) => {
@@ -232,7 +207,7 @@ function FqcBody({ rowGap, initialScanCode }: { rowGap: number; initialScanCode?
                 globalBusy={vm.actionBusy && vm.busyActionName !== '删除' && vm.busyActionName !== '刷新'}
               />
             </div>
-            <QualityPageWarmupStrip state={warmupState} className="mt-2" />
+            <FqcLookupWarmupStrip state={lookup} className="mt-2" />
             <HeaderDocument
               rowGap={rowGap}
               registerRequired={vm.registerRequired}

@@ -28,12 +28,10 @@ describe('navigation return-to helpers', () => {
   })
 
   test('buildQualityInspectionActionHref 构建质量检验动作回跳地址', () => {
-    expect(buildQualityInspectionActionHref('fqc', 'unapprove', 12)).toBe(
-      '/features/erp/quality/fqc?action=unapprove&billId=12',
-    )
     expect(buildQualityInspectionActionHref('fai', 'unapprove')).toBe(
       '/features/erp/quality/fai?action=unapprove',
     )
+    expect(buildQualityInspectionActionHref('fqc', 'unapprove', 12)).toBeNull()
     expect(buildQualityInspectionActionHref('ncr', 'unapprove', 12)).toBeNull()
     expect(buildQualityInspectionActionHref('fqc', '', 12)).toBeNull()
   })

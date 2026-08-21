@@ -35,6 +35,22 @@ import {
 export type SelectOption = import('../../shared/reworkFlowDetailOptions').SelectOption
 
 /**
+ * 返工工序切换时来源草稿接口返回的“无候选来源”消息。
+ *
+ * 该消息在扫码生成 NCR 时仍然需要提示；仅在返工工序切换的来源草稿刷新场景静默。
+ */
+const NO_ELIGIBLE_REWORK_DRAFT_MESSAGE = '未找到可生成不合格返工单的检验单（需满足：已审批 + 不合格 + 未生成返工单）'
+
+/**
+ * 判断来源草稿刷新结果是否属于返工路线切换时无需展示的无候选提示。
+ * @param message 应用层返回的错误消息。
+ * @returns 与目标消息一致时返回 true。
+ */
+function isSilentReworkDraftReloadMessage(message: unknown): boolean {
+  return typeof message === 'string' && message.trim() === NO_ELIGIBLE_REWORK_DRAFT_MESSAGE
+}
+
+/**
  *
  * NCR “本地照片证据”图片项（与 image-loader 的 ErpImageItem 兼容）。
  * @remarks
@@ -839,6 +855,10 @@ export class NcrViewModel extends QualityDocumentBase<DefectiveReworkOrderDocume
       }
 
       if (result.type === 'ERROR') {
+        if (isSilentReworkDraftReloadMessage(result.message)) {
+          return
+        }
+
         try {
           if (result.level === 'warning') toast.warning(result.message)
           else toast.error(result.message)

@@ -45,7 +45,7 @@ function parsePositiveInteger(value: string | number | null | undefined): number
 /**
  *
  * 构建质量检验页面的精确返回地址。
- * @param source 质量检验来源（FAI/FQC）
+ * @param source 需要保留动作回跳能力的质量检验来源（当前仅 FAI）
  * @param billId 可选单据主键；存在时以 id 参数恢复原单据
  * @returns 对应的站内路径；来源不受支持时返回 null
  *
@@ -81,7 +81,8 @@ export function buildQualityInspectionActionHref(
 ): string | null {
   const normalizedSource = normalizeQualityInspectionSource(source)
   const normalizedAction = String(action ?? '').trim()
-  if (!normalizedSource || !normalizedAction) return null
+  // FQC 的反审批已在中间页完成后再通过 ?id 回跳，不再生成旧 action URL。
+  if (normalizedSource !== 'fai' || !normalizedAction) return null
 
   const params = new URLSearchParams({ action: normalizedAction })
   const id = parsePositiveInteger(billId)

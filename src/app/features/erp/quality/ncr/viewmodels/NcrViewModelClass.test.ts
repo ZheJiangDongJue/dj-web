@@ -213,6 +213,50 @@ describe('NcrViewModelClass', () => {
     expect((vm.bill as any).ReworkTypeofWorkid).toBe(22)
   })
 
+  test('返工工序切换：无候选来源提示应静默，其它错误仍提示', async () => {
+    const { fetchWorkTypes } = await import('@/lib/erp/type-of-work')
+    const { fetchLookup } = await import('@/lib/erp/lookup-core')
+    const { toast } = await import('sonner')
+    const { NcrViewModel } = await import('./NcrViewModelClass')
+
+    ;(fetchWorkTypes as any).mockResolvedValue([])
+    ;(fetchLookup as any).mockResolvedValue([])
+
+    const reloadDraftByFlowDetail = vi.fn()
+      .mockResolvedValueOnce({
+        type: 'ERROR',
+        level: 'error',
+        message: '未找到可生成不合格返工单的检验单（需满足：已审批 + 不合格 + 未生成返工单）',
+      })
+      .mockResolvedValueOnce({
+        type: 'ERROR',
+        level: 'error',
+        message: '来源草稿接口暂时不可用',
+      })
+
+    const vm = new NcrViewModel({
+      delete: vi.fn(async () => ({ success: true, message: '' })),
+      fetchById: vi.fn(async () => ({ document: null, details: [] })),
+      reloadDraftByFlowDetail,
+    } as any)
+
+    vm.badProcessOptions = [
+      { label: '工序A', value: '2', flowDetailTableName: 'ProcessAssemblyFlowDetail' },
+    ]
+
+    await vm.handleReworkFlowDetailChange('ReworkTypeofWork2id', '2')
+
+    expect(reloadDraftByFlowDetail).toHaveBeenCalledOnce()
+    expect(toast.warning).not.toHaveBeenCalled()
+    expect(toast.error).not.toHaveBeenCalled()
+    expect((vm.bill as any).ReworkTypeofWork2id).toBe(2)
+
+    await vm.handleReworkFlowDetailChange('ReworkTypeofWork2id', '2')
+
+    expect(reloadDraftByFlowDetail).toHaveBeenCalledTimes(2)
+    expect(toast.error).toHaveBeenCalledWith('来源草稿接口暂时不可用')
+  })
+
   test('返工工序提示：草稿单据头直接带流程卡明细时标记为红色提示状态', async () => {
     const { fetchLookup } = await import('@/lib/erp/lookup-core')
     const { NcrViewModel } = await import('./NcrViewModelClass')
