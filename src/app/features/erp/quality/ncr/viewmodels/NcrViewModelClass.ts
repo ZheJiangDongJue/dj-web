@@ -889,7 +889,9 @@ export class NcrViewModel extends QualityDocumentBase<DefectiveReworkOrderDocume
       reworkTypeofWorkId: field === 'ReworkTypeofWorkid' ? nextId || null : snapshot.reworkTypeofWorkId,
       reworkTypeofWork2Id: field === 'ReworkTypeofWork2id' ? nextId || null : snapshot.reworkTypeofWork2Id,
     }
+    const changed = !Object.is((this.bill as any)?.[field], nextId)
     this.bill = { ...(this.bill as any), [field]: nextId } as DefectiveReworkOrderDocument
+    if (changed) this.markDocumentDirty()
     this.emit()
 
     await this.reloadSourceByReworkFlowDetailChange(nextId || null, preserveReworkSelection)
@@ -920,7 +922,13 @@ export class NcrViewModel extends QualityDocumentBase<DefectiveReworkOrderDocume
       try { toast.warning('当前状态不允许修改照片证据') } catch { }
       return
     }
-    this.localPhotoEvidence = Array.isArray(items) ? items : []
+    const next = Array.isArray(items) ? items : []
+    const previous = Array.isArray(this.localPhotoEvidence) ? this.localPhotoEvidence : []
+    const changed =
+      previous.length !== next.length ||
+      next.some((item, index) => this.getPhotoKey(item) !== this.getPhotoKey(previous[index]))
+    this.localPhotoEvidence = next
+    if (changed) this.markDocumentDirty()
     this.emit()
   }
 
@@ -938,6 +946,7 @@ export class NcrViewModel extends QualityDocumentBase<DefectiveReworkOrderDocume
     const next = [...(this.localPhotoEvidence ?? [])]
     for (const it of items ?? []) next.push(it)
     this.localPhotoEvidence = next
+    if ((items ?? []).length > 0) this.markDocumentDirty()
     this.emit()
   }
 
@@ -970,7 +979,9 @@ export class NcrViewModel extends QualityDocumentBase<DefectiveReworkOrderDocume
       next.push(item)
     }
 
+    const changed = next.length !== prev.length
     this.localPhotoEvidence = next
+    if (changed) this.markDocumentDirty()
     this.emit()
   }
 
@@ -999,7 +1010,9 @@ export class NcrViewModel extends QualityDocumentBase<DefectiveReworkOrderDocume
       if (itemKey === key) continue
       next.push(item)
     }
+    const changed = next.length !== prev.length
     this.serverPhotoEvidence = next
+    if (changed) this.markDocumentDirty()
     this.emit()
   }
 
@@ -1068,8 +1081,10 @@ export class NcrViewModel extends QualityDocumentBase<DefectiveReworkOrderDocume
   public updateBill = (patch: Partial<DefectiveReworkOrderDocument>): void => {
     // 审批/冻结/结案/作废状态下禁止修改
     if (this.disableDetailEdit) return
+    const changed = Object.keys(patch as any).some((key) => !Object.is((this.bill as any)?.[key], (patch as any)?.[key]))
     const next = { ...(this.bill as any), ...(patch as any) } as DefectiveReworkOrderDocument
     this.bill = next
+    if (changed) this.markDocumentDirty()
     this.emit()
   }
 
@@ -1096,6 +1111,7 @@ export class NcrViewModel extends QualityDocumentBase<DefectiveReworkOrderDocume
     this.ensureDetailLocalKey(detail as any)
     next.push(detail)
     this.details = next
+    this.markDocumentDirty()
     this.emit()
   }
 
@@ -1113,13 +1129,14 @@ export class NcrViewModel extends QualityDocumentBase<DefectiveReworkOrderDocume
       return
     }
     const targetKey = String(key ?? '')
-    const next = (this.details ?? []).filter((it: any) => this.ensureDetailLocalKey(it) !== targetKey)
+    const next = current.filter((it: any) => this.ensureDetailLocalKey(it) !== targetKey)
     if (next.length <= 0) {
       const detail = createEmptyNcrDetail()
       this.ensureDetailLocalKey(detail as any)
       next.push(detail)
     }
     this.details = next
+    if (next.length !== current.length) this.markDocumentDirty()
     this.emit()
   }
 
@@ -1150,12 +1167,17 @@ export class NcrViewModel extends QualityDocumentBase<DefectiveReworkOrderDocume
   public changeDetailReason = (key: string, reason: string): void => {
     if (this.disableDetailEdit) return
     const targetKey = String(key ?? '')
+    const current = (this.details ?? []).find((it: any) => this.ensureDetailLocalKey(it) === targetKey)
+    if (!current) return
+    const nextReason = String(reason ?? '')
+    const changed = !Object.is(current.Adversesituation, nextReason)
     const next = (this.details ?? []).map((it: any) =>
       this.ensureDetailLocalKey(it) === targetKey
-        ? { ...it, Adversesituation: String(reason ?? '') }
+        ? { ...it, Adversesituation: nextReason }
         : it,
     )
     this.details = next
+    if (changed) this.markDocumentDirty()
     this.emit()
   }
 
@@ -1663,6 +1685,7 @@ export class NcrViewModel extends QualityDocumentBase<DefectiveReworkOrderDocume
     this.applySourceContextFromDocument(enriched)
     this.isReworkFlowDetailRequired = false
     this.details = normDetails as any[]
+    this.markDocumentDataLoaded()
     this.emit()
     void this.refreshReworkFlowDetailRequiredState(enriched)
     this.ensureAtLeastOneDetailRow()

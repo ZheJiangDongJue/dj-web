@@ -3,6 +3,10 @@
 import { useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useRouteTransition } from "@/components/transition/RouteTransitionContext";
+import {
+  confirmDocumentLeave,
+  hasDocumentLeaveGuard,
+} from "@/lib/documents/document-leave-confirmation";
 
 export type NavigateApi = {
   push: (href: string) => void;
@@ -21,16 +25,43 @@ export function useNavigateWithTransition(): NavigateApi {
   return useMemo<NavigateApi>(
     () => ({
       push: (href) => {
-        startTransition(href);
-        router.push(href);
+        const navigate = () => {
+          startTransition(href);
+          router.push(href);
+        };
+        if (!hasDocumentLeaveGuard()) {
+          navigate();
+          return;
+        }
+        void confirmDocumentLeave().then((allowed) => {
+          if (allowed) navigate();
+        });
       },
       replace: (href) => {
-        startTransition(href);
-        router.replace(href);
+        const navigate = () => {
+          startTransition(href);
+          router.replace(href);
+        };
+        if (!hasDocumentLeaveGuard()) {
+          navigate();
+          return;
+        }
+        void confirmDocumentLeave().then((allowed) => {
+          if (allowed) navigate();
+        });
       },
       back: () => {
-        startTransition();
-        router.back();
+        const navigate = () => {
+          startTransition();
+          router.back();
+        };
+        if (!hasDocumentLeaveGuard()) {
+          navigate();
+          return;
+        }
+        void confirmDocumentLeave().then((allowed) => {
+          if (allowed) navigate();
+        });
       },
     }),
     [router, startTransition]

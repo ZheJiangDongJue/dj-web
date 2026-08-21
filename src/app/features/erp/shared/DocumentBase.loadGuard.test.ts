@@ -109,6 +109,8 @@ describe('DocumentBase 加载时序保护（loadSeq）', () => {
     expect(state.document.id).toBe(2)
     expect(state.status).toBe(200)
     expect(state.docActions.state.id).toBe(2)
+    expect(doc.hasDocumentData).toBe(true)
+    expect(doc.shouldConfirmLeave).toBe(true)
   })
 
   it('reset 会取消进行中的 refresh 回写', async () => {
@@ -134,6 +136,48 @@ describe('DocumentBase 加载时序保护（loadSeq）', () => {
     expect(state.document.id).toBe(0)
     expect(state.status).toBe(0)
     expect(state.docActions.state.id).toBe(null)
+    expect(doc.hasDocumentData).toBe(false)
+    expect(doc.shouldConfirmLeave).toBe(false)
+  })
+
+  it('新建态发生修改后需要拦截离开，重置后恢复为空白态', () => {
+    const doc = new DocumentBase<AnyDoc, AnyDetail>(createOptions({
+      save: async () => ({}),
+      approve: async () => ({}),
+      unapprove: async () => ({}),
+      extractId: () => 0,
+    }))
+
+    bindState(doc)
+
+    expect(doc.hasDocumentData).toBe(false)
+    expect(doc.shouldConfirmLeave).toBe(false)
+
+    doc.markDocumentDirty()
+
+    expect(doc.hasDocumentData).toBe(false)
+    expect(doc.shouldConfirmLeave).toBe(true)
+
+    doc.reset()
+
+    expect(doc.hasDocumentData).toBe(false)
+    expect(doc.shouldConfirmLeave).toBe(false)
+  })
+
+  it('加载数据会清除新建态脏标记并进入已装载态', () => {
+    const doc = new DocumentBase<AnyDoc, AnyDetail>(createOptions({
+      save: async () => ({}),
+      approve: async () => ({}),
+      unapprove: async () => ({}),
+      extractId: () => 0,
+    }))
+
+    bindState(doc)
+    doc.markDocumentDirty()
+    doc.markDocumentDataLoaded()
+
+    expect(doc.hasDocumentData).toBe(true)
+    expect(doc.shouldConfirmLeave).toBe(true)
   })
 
   it('openById 并发返回时，仅最后一次写入状态', async () => {

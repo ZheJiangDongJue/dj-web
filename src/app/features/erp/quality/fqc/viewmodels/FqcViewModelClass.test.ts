@@ -368,6 +368,27 @@ describe('FqcViewModelClass', () => {
     expect((vm.bill as any).RQty + (vm.bill as any).PassBQty + (vm.bill as any).NotPassBQty).toBe(10)
   })
 
+  test('新建态修改表头或明细后应触发离开保护，重新新建后清除保护', () => {
+    const vm = new FqcViewModel(createMockAppService())
+
+    expect(vm.hasDocumentData).toBe(false)
+    expect(vm.shouldConfirmLeave).toBe(false)
+
+    vm.setBill('Employeeid', 7)
+    expect(vm.shouldConfirmLeave).toBe(true)
+
+    vm.createNewBill()
+    const detail = createDetail()
+    detail.ProjectName = '尺寸A'
+    vm.details = [detail as any]
+    vm.setMeasureByDetailKey(vm.getDetailKey(detail), 0, '10')
+    expect(vm.shouldConfirmLeave).toBe(true)
+
+    vm.createNewBill()
+    expect(vm.hasDocumentData).toBe(false)
+    expect(vm.shouldConfirmLeave).toBe(false)
+  })
+
   test('loadInspectorOptions 会映射选项', async () => {
     const { fetchActiveEmployees } = await import('@/lib/erp/employee')
     ;(fetchActiveEmployees as Mock).mockResolvedValue([{ label: '张三', value: 1 }])

@@ -24,6 +24,7 @@ import FlowDetailPickDialog from '../shared/FlowDetailPickDialog'
 import { QualityPageWarmupStrip, useQualityPageWarmup } from '../shared/pageWarmup'
 import { useNcrViewModelClass as useNcrVM, type LocalErpImageItem } from "./viewmodels/NcrViewModelClass"
 import { useNcrExternal } from "./viewmodels/useNcrExternal"
+import { useDocumentLeaveGuard } from '@/lib/documents/useDocumentLeaveGuard'
 import { isAndroidBridgeAvailable, pickImagesAdvanced, takePhoto } from "@/lib/android-bridge"
 import { loadImageBase64, type ErpImageItem } from "@/lib/image-loader"
 import { API_BASE, DEFAULT_DB_NAME } from '@/lib/config'
@@ -297,6 +298,7 @@ export default function ClientPage({
   // 避免解构 ViewModel，保持响应和可维护性；统一以 vm.* 引用（类实例 + 外部订阅）
   const vmStore = useNcrVM()
   const vm = useNcrExternal(vmStore)
+  useDocumentLeaveGuard(vm.shouldConfirmLeave)
   const searchParams = useSearchParams()
   const queryId = searchParams.get('id')
   const queryScanCode = searchParams.get('scancode')

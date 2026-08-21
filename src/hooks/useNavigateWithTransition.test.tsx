@@ -3,6 +3,10 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, act, cleanup } from "@testing-library/react";
 import { RouteTransitionProvider } from "@/components/transition/RouteTransitionContext";
 import { useNavigateWithTransition } from "./useNavigateWithTransition";
+import {
+  registerDocumentLeaveConfirmationHandler,
+  registerDocumentLeaveGuard,
+} from "@/lib/documents/document-leave-confirmation";
 
 const pushSpy = vi.fn();
 const replaceSpy = vi.fn();
@@ -15,6 +19,8 @@ vi.mock("next/navigation", () => ({
 
 afterEach(() => {
   cleanup();
+  registerDocumentLeaveGuard(null);
+  registerDocumentLeaveConfirmationHandler(null);
   pushSpy.mockClear();
   replaceSpy.mockClear();
   backSpy.mockClear();
@@ -84,5 +90,41 @@ describe("useNavigateWithTransition", () => {
     });
     expect(backSpy).toHaveBeenCalled();
     expect(document.body.dataset.routePending).toBe("true");
+  });
+
+  it("存在草稿且取消确认时阻止统一导航", async () => {
+    registerDocumentLeaveGuard(() => true);
+    registerDocumentLeaveConfirmationHandler(() => false);
+    let api!: ReturnType<typeof useNavigateWithTransition>;
+    render(
+      <RouteTransitionProvider>
+        <Probe onReady={(a) => { api = a; }} />
+      </RouteTransitionProvider>
+    );
+
+    await act(async () => {
+      api.push("/erp/home");
+      await Promise.resolve();
+    });
+
+    expect(pushSpy).not.toHaveBeenCalled();
+  });
+
+  it("存在草稿且确认后执行统一导航", async () => {
+    registerDocumentLeaveGuard(() => true);
+    registerDocumentLeaveConfirmationHandler(() => true);
+    let api!: ReturnType<typeof useNavigateWithTransition>;
+    render(
+      <RouteTransitionProvider>
+        <Probe onReady={(a) => { api = a; }} />
+      </RouteTransitionProvider>
+    );
+
+    await act(async () => {
+      api.replace("/erp/me");
+      await Promise.resolve();
+    });
+
+    expect(replaceSpy).toHaveBeenCalledWith("/erp/me");
   });
 });

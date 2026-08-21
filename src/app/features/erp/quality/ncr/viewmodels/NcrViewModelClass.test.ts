@@ -300,6 +300,29 @@ describe('NcrViewModelClass', () => {
     expect(vm.isReworkFlowDetailRequired).toBe(false)
   })
 
+  test('新建态修改表头或明细后应触发离开保护，重新新建后清除保护', async () => {
+    const { NcrViewModel } = await import('./NcrViewModelClass')
+
+    const vm = new NcrViewModel({
+      delete: vi.fn(async () => ({ success: true, message: '' })),
+      fetchById: vi.fn(async () => ({ document: null, details: [] })),
+    } as any)
+
+    expect(vm.hasDocumentData).toBe(false)
+    expect(vm.shouldConfirmLeave).toBe(false)
+
+    vm.updateBill({ Employeeid: 7 })
+    expect(vm.shouldConfirmLeave).toBe(true)
+
+    vm.createNewBill()
+    vm.addDetail()
+    expect(vm.shouldConfirmLeave).toBe(true)
+
+    vm.createNewBill()
+    expect(vm.hasDocumentData).toBe(false)
+    expect(vm.shouldConfirmLeave).toBe(false)
+  })
+
   test('handleApprove 不应等待照片证据补拉完成后才结束', async () => {
     const { toast } = await import('sonner')
     const { NcrViewModel } = await import('./NcrViewModelClass')

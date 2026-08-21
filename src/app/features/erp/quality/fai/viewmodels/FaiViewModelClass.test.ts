@@ -286,6 +286,28 @@ describe('FaiViewModelClass', () => {
     }))
   })
 
+  test('新建态修改表头或明细后应触发离开保护，重新新建后清除保护', async () => {
+    vi.resetModules()
+    const { FaiViewModel } = await import('./FaiViewModelClass')
+    const vm = new FaiViewModel({} as any)
+
+    expect(vm.hasDocumentData).toBe(false)
+    expect(vm.shouldConfirmLeave).toBe(false)
+
+    vm.setBill('Employeeid', 7)
+    expect(vm.shouldConfirmLeave).toBe(true)
+
+    vm.createNewBill()
+    const detail = createDetail('尺寸A')
+    vm.details = [detail as any]
+    vm.setMeasureByDetailKey(vm.getDetailKey(detail), 0, '10')
+    expect(vm.shouldConfirmLeave).toBe(true)
+
+    vm.createNewBill()
+    expect(vm.hasDocumentData).toBe(false)
+    expect(vm.shouldConfirmLeave).toBe(false)
+  })
+
   test('processScanCode 在草稿未携带 id 时不应沿用旧单据 id 回刷', async () => {
     vi.resetModules()
     const { FaiViewModel } = await import('./FaiViewModelClass')

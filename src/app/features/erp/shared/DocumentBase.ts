@@ -408,6 +408,10 @@ export interface DocumentLoadContext {
 export interface DocumentBaseLike<TDocument, TDetail> {
   configure(options: NormalizedDocumentBaseOptions<TDocument, TDetail>): void
   bindBridge(bridge: DocumentBaseBridge<TDocument, TDetail>): void
+  readonly hasDocumentData: boolean
+  readonly shouldConfirmLeave: boolean
+  markDocumentDirty(): void
+  markDocumentDataLoaded(): void
   getStatusLocks(
     status: number,
   ): { isLocked: boolean; approveDisabled: boolean; unapproveDisabled: boolean; editingDisabled: boolean }
@@ -447,12 +451,80 @@ export class DocumentBase<TDocument, TDetail> implements DocumentBaseLike<TDocum
    */
   public get revision(): number { return this._version }
 
+  /**
+   * 当前页面是否已经装载单据或草稿数据。
+   *
+   * @returns 新建空白态为 false；打开已有单据、加载不落库草稿或保存成功后为 true。
+   */
+  public get hasDocumentData(): boolean {
+    return this.documentPresence === 'loaded'
+  }
+
+  /**
+   * 当前页面是否应在发生页面级离开时询问用户。
+   *
+   * @returns
+   * - 已打开单据或已加载不落库草稿：返回 true；
+   * - 新建空白态：返回 false；
+   * - 新建态发生过任意单据内容修改：返回 true。
+   *
+   * @remarks
+   * 该判断只服务于离开页面保护，不改变保存、审批、删除等业务流程的状态判定。
+   */
+  public get shouldConfirmLeave(): boolean {
+    return this.documentPresence === 'loaded' || this.documentDirty
+  }
+
+  /**
+   * 标记当前新建态已经发生了用户修改。
+   *
+   * @remarks
+   * - 由具体单据 ViewModel 在表头、明细或附件等用户编辑入口写入；
+   * - 初始化默认值、服务端加载、草稿加载和重置不会调用该方法；
+   * - 已装载单据即使不设置该标记，也会继续按已有单据规则触发离开询问。
+   */
+  public markDocumentDirty(): void {
+    if (this.documentPresence === 'loaded' || this.documentDirty) return
+    this.documentDirty = true
+    this.emit()
+  }
+
+  /**
+   * 将当前页面标记为已经装载单据/草稿数据。
+   *
+   * @remarks
+   * 供质量域 ViewModel 在“不落库草稿”写入本地状态后调用；普通按 ID 打开/刷新由基类自动标记。
+   */
+  public markDocumentDataLoaded(): void {
+    const changed = this.documentPresence !== 'loaded' || this.documentDirty
+    this.documentPresence = 'loaded'
+    this.documentDirty = false
+    if (changed) this.emit()
+  }
+
   private options: NormalizedDocumentBaseOptions<TDocument, TDetail>
   private bridge: DocumentBaseBridge<TDocument, TDetail> | null = null
   private disposeScanListener: (() => void) | null = null
   private scanListenerRegistryKey: string | null = null
   private activeScanHandler: ScanResultHandler | null = null
   private loadSeq = 0
+  /**
+   * 当前单据生命周期：新建空白态，或已经装载了单据/草稿数据的状态。
+   *
+   * @remarks
+   * - 不能只依赖主键判断：扫码生成的质量单据草稿不落库，主键仍为空但页面已经有业务数据；
+   * - 该状态用于离开页面保护，不改变保存、审批等既有业务判断。
+   */
+  private documentPresence: 'new' | 'loaded' = 'new'
+
+  /**
+   * 新建态是否已经被用户修改。
+   *
+   * @remarks
+   * 该字段与 documentPresence 分离：新建态只要产生用户编辑就需要拦截离开，
+   * 但仍然保持“新建态没有已装载单据数据”的业务生命周期语义。
+   */
+  private documentDirty = false
 
   /**
    *
@@ -919,6 +991,7 @@ export class DocumentBase<TDocument, TDetail> implements DocumentBaseLike<TDocum
     setDetails(details)
     setStatus(deriveStatus(document))
     docActions.setId(targetId)
+    this.markDocumentDataLoaded()
     await onAfterRefresh?.({ document, details }, ctx)
   }
 
@@ -1172,6 +1245,8 @@ export class DocumentBase<TDocument, TDetail> implements DocumentBaseLike<TDocum
     const { docActions, setDocument, setDetails, setStatus } = this.bridge
 
     this.bumpLoadSeq()
+    this.documentPresence = 'new'
+    this.documentDirty = false
     const emptyDoc = createEmptyDocument()
     setDocument(emptyDoc)
     // 重置时清空所有明细，保持“新增即空”的唯一语义
@@ -1215,6 +1290,7 @@ export class DocumentBase<TDocument, TDetail> implements DocumentBaseLike<TDocum
       const nextStatus = deriveStatus(nextDoc)
       setStatus(nextStatus)
       docActions.setId(targetId)
+      this.markDocumentDataLoaded()
       await onAfterRefresh?.({ document: nextDoc, details: nextDetails }, ctx)
     } catch (error) {
       if (!this.isLoadSeqActive(seq)) return
@@ -1266,6 +1342,7 @@ export class DocumentBase<TDocument, TDetail> implements DocumentBaseLike<TDocum
         setDetails(details)
         setStatus(deriveStatus(doc))
         docActions.setId(targetId)
+        this.markDocumentDataLoaded()
         await onAfterRefresh?.({ document: doc, details }, ctx)
         return { document: doc, details }
       } catch {
@@ -1335,6 +1412,7 @@ export class DocumentBase<TDocument, TDetail> implements DocumentBaseLike<TDocum
 
       if (id) {
         docActions.setId(id)
+        this.markDocumentDataLoaded()
 
         // 同步更新当前桥接文档中的主键字段，避免后续保存因 id 为 0 导致重复建单。
         try {

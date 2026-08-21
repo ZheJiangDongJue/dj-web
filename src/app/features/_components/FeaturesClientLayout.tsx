@@ -1,5 +1,5 @@
 "use client";
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { notFound, usePathname, useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { scanQRCode } from "@/lib/android-bridge";
@@ -11,6 +11,14 @@ import {
   registerDocumentRefreshConfirmationHandler,
   type DocumentRefreshConfirmationOptions,
 } from "@/lib/documents/document-refresh-confirmation";
+import {
+  allowNextDocumentLeavePopState,
+  consumeAllowedDocumentLeavePopState,
+  confirmDocumentLeave,
+  DOCUMENT_LEAVE_CONFIRMATION_MESSAGE,
+  hasDocumentLeaveGuard,
+  registerDocumentLeaveConfirmationHandler,
+} from "@/lib/documents/document-leave-confirmation";
 import {
   Dialog,
   DialogContent,
@@ -35,6 +43,10 @@ type Ctx = {
 
 type RefreshConfirmState = {
   options: DocumentRefreshConfirmationOptions;
+  resolve: (value: boolean) => void;
+};
+
+type LeaveConfirmState = {
   resolve: (value: boolean) => void;
 };
 
@@ -84,6 +96,11 @@ export default function FeaturesClientLayout({ children }: { children: React.Rea
   // 由页面通过上下文设置的标题（优先级最高）。
   const [explicitTitle, setExplicitTitle] = useState<string | undefined>(undefined);
   const [refreshConfirm, setRefreshConfirm] = useState<RefreshConfirmState | null>(null);
+  const [leaveConfirm, setLeaveConfirm] = useState<LeaveConfirmState | null>(null);
+  const currentHrefRef = useRef<string | null>(null);
+  const currentHistoryStateRef = useRef<unknown>(null);
+  const leaveNavigationPendingRef = useRef(false);
+  const leaveHistoryPromptPendingRef = useRef(false);
 
   // 仅允许显式设置标题，删除兜底逻辑
   const title = explicitTitle;
@@ -124,24 +141,6 @@ export default function FeaturesClientLayout({ children }: { children: React.Rea
     // 当路径或标题变化时重新校验；标题由子页面设置
   }, [pathname, title]);
 
-  // 返回逻辑：如果没有历史记录则跳指定路由。
-  const onBack = useCallback(() => {
-    if (returnTarget) {
-      router.replace(returnTarget);
-      return;
-    }
-    if (typeof window !== "undefined" && window.history.length > 1) {
-      router.back();
-      return;
-    }
-    // 根据路径选择较为合理的回退页面
-    if ((pathname || "").startsWith("/features/erp")) {
-      router.push("/erp");
-    } else {
-      router.push("/");
-    }
-  }, [pathname, router, returnTarget]);
-
   const ctxValue = useMemo<Ctx>(() => ({
     // 只接受非空标题，其余视为未设置
     setTitle: (t?: string) => {
@@ -174,6 +173,13 @@ export default function FeaturesClientLayout({ children }: { children: React.Rea
     });
   }, []);
 
+  const closeLeaveConfirm = useCallback((value: boolean) => {
+    setLeaveConfirm((current) => {
+      current?.resolve(value);
+      return null;
+    });
+  }, []);
+
   useEffect(() => {
     return registerDocumentRefreshConfirmationHandler((options) => {
       return new Promise<boolean>((resolve) => {
@@ -184,6 +190,144 @@ export default function FeaturesClientLayout({ children }: { children: React.Rea
       });
     });
   }, []);
+
+  useEffect(() => {
+    const unregister = registerDocumentLeaveConfirmationHandler(() => {
+      return new Promise<boolean>((resolve) => {
+        setLeaveConfirm((current) => {
+          current?.resolve(false);
+          return { resolve };
+        });
+      });
+    });
+
+    return () => {
+      unregister();
+      closeLeaveConfirm(false);
+    };
+  }, [closeLeaveConfirm]);
+
+  /**
+   * 浏览器刷新、关闭标签页或跳往外部地址时使用原生离开确认。
+   *
+   * @remarks
+   * 浏览器不允许在 beforeunload 中展示自定义 React Dialog，只能通过 returnValue 触发原生提示。
+   */
+  useEffect(() => {
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (!hasDocumentLeaveGuard()) return;
+      event.preventDefault();
+      event.returnValue = DOCUMENT_LEAVE_CONFIRMATION_MESSAGE;
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, []);
+
+  /** 保存当前地址，用于浏览器后退被拦截时恢复原页面。 */
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      currentHrefRef.current = window.location.href;
+      currentHistoryStateRef.current = window.history.state;
+    }
+  }, [pathname, searchParamString]);
+
+  /**
+   * 拦截浏览器后退并在用户确认后恢复这次历史导航。
+   *
+   * @remarks
+   * popstate 事件本身不可取消，因此先把当前地址重新压回历史栈，让刚才的目标条目位于前一位，
+   * 再按用户选择前往该目标条目。
+   * 使用捕获阶段并停止后续传播，避免 Next Router 在确认前先切换页面。
+   */
+  useEffect(() => {
+    const handlePopState = (event: PopStateEvent) => {
+      if (consumeAllowedDocumentLeavePopState()) {
+        currentHrefRef.current = window.location.href;
+        currentHistoryStateRef.current = event.state;
+        return;
+      }
+      if (!hasDocumentLeaveGuard()) {
+        currentHrefRef.current = window.location.href;
+        currentHistoryStateRef.current = event.state;
+        return;
+      }
+
+      const restoreHref = currentHrefRef.current ?? window.location.href;
+      event.stopImmediatePropagation();
+
+      try {
+        // 使用最近一次已确认页面的历史状态，避免取消离开后地址恢复但 Next 内部树仍指向目标页。
+        const currentState = currentHistoryStateRef.current ?? window.history.state;
+        const restoredState =
+          currentState && typeof currentState === "object"
+            ? { ...currentState, __djDocumentLeaveGuard: true }
+            : { __djDocumentLeaveGuard: true };
+        window.history.pushState(restoredState, "", restoreHref);
+      } catch {
+        // 无法恢复历史地址时保留当前页面，避免继续触发不可控的导航。
+        return;
+      }
+
+      if (leaveHistoryPromptPendingRef.current) return;
+      leaveHistoryPromptPendingRef.current = true;
+      void confirmDocumentLeave()
+        .then((allowed) => {
+          if (!allowed) return;
+          allowNextDocumentLeavePopState();
+          window.history.go(-1);
+        })
+        .finally(() => {
+          leaveHistoryPromptPendingRef.current = false;
+        });
+    };
+
+    window.addEventListener("popstate", handlePopState, true);
+    return () => window.removeEventListener("popstate", handlePopState, true);
+  }, []);
+
+  /**
+   * 等待离开确认后执行页面导航。
+   *
+   * @param navigate 已确认后要执行的导航动作。
+   * @param isHistoryBack 是否会触发浏览器 popstate；仅该场景需要跳过下一次守卫。
+   */
+  const navigateAfterLeaveConfirmation = useCallback(
+    (navigate: () => void, isHistoryBack = false) => {
+      if (leaveNavigationPendingRef.current) return;
+      leaveNavigationPendingRef.current = true;
+      void confirmDocumentLeave()
+        .then((allowed) => {
+          if (!allowed) return;
+          if (isHistoryBack) allowNextDocumentLeavePopState();
+          navigate();
+        })
+        .finally(() => {
+          leaveNavigationPendingRef.current = false;
+        });
+    },
+    [],
+  );
+
+  // 返回逻辑：如果没有历史记录则跳指定路由。
+  const onBack = useCallback(() => {
+    if (returnTarget) {
+      navigateAfterLeaveConfirmation(() => router.replace(returnTarget));
+      return;
+    }
+    if (typeof window !== "undefined" && window.history.length > 1) {
+      navigateAfterLeaveConfirmation(() => router.back(), true);
+      return;
+    }
+    // 根据路径选择较为合理的回退页面
+    navigateAfterLeaveConfirmation(() => {
+      if ((pathname || "").startsWith("/features/erp")) {
+        router.push("/erp");
+      } else {
+        router.push("/");
+      }
+    });
+  }, [navigateAfterLeaveConfirmation, pathname, router, returnTarget]);
 
   return (
     <FeaturesLayoutContext.Provider value={ctxValue}>
@@ -279,6 +423,36 @@ export default function FeaturesClientLayout({ children }: { children: React.Rea
                 onClick={() => closeRefreshConfirm(true)}
               >
                 更新
+              </button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog
+          open={!!leaveConfirm}
+          onOpenChange={(open) => {
+            if (!open) closeLeaveConfirm(false);
+          }}
+        >
+          <DialogContent className="max-w-[22rem]" showCloseButton={false}>
+            <DialogHeader>
+              <DialogTitle>确认离开单据页面</DialogTitle>
+              <DialogDescription>{DOCUMENT_LEAVE_CONFIRMATION_MESSAGE}</DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <button
+                type="button"
+                className="inline-flex min-h-10 items-center justify-center rounded-md border border-neutral-300 px-4 text-sm font-medium text-neutral-700 hover:bg-neutral-100 active:bg-neutral-200 dark:border-neutral-700 dark:text-neutral-200 dark:hover:bg-neutral-800"
+                onClick={() => closeLeaveConfirm(false)}
+              >
+                留在当前页
+              </button>
+              <button
+                type="button"
+                className="inline-flex min-h-10 items-center justify-center rounded-md bg-neutral-900 px-4 text-sm font-medium text-white hover:bg-neutral-700 active:bg-neutral-800 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-white"
+                onClick={() => closeLeaveConfirm(true)}
+              >
+                确认离开
               </button>
             </DialogFooter>
           </DialogContent>

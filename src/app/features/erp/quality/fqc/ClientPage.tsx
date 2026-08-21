@@ -14,6 +14,8 @@ import DocumentHeaderActions from '@/app/features/common/documents/DocumentHeade
 import DebugFab from '@/components/molecules/DebugFab'
 import { focusComboboxByAriaLabel } from '@/lib/dom/focusCombobox'
 import { shouldUseDefaultMeasureFrequency } from '@/lib/documents/inspection'
+import { useDocumentLeaveGuard } from '@/lib/documents/useDocumentLeaveGuard'
+import { confirmDocumentLeave } from '@/lib/documents/document-leave-confirmation'
 import { useFqcViewModelClass as useFqcVM } from './viewmodels/FqcViewModelClass'
 import { DocumentStatus } from '@/types/erp-db.generated'
 import { type RequiredFieldRegistration } from '@/lib/validation/requiredFieldManager'
@@ -87,6 +89,7 @@ import { useFqcExternal } from './viewmodels/useFqcExternal'
 function FqcBody({ rowGap, initialScanCode }: { rowGap: number; initialScanCode?: string | null }) {
   const vmStore = useFqcVM()
   const vm = useFqcExternal(vmStore)
+  useDocumentLeaveGuard(vm.shouldConfirmLeave)
   const router = useRouter()
   const lookup = useFqcLookup()
   const searchParams = useSearchParams()
@@ -101,7 +104,11 @@ function FqcBody({ rowGap, initialScanCode }: { rowGap: number; initialScanCode?
   }, [lookup, vm])
 
   useEffect(() => {
-    vm.setNcrPromptNavigation((href) => router.replace(href))
+    vm.setNcrPromptNavigation((href) => {
+      void confirmDocumentLeave().then((allowed) => {
+        if (allowed) router.replace(href)
+      })
+    })
     return () => vm.setNcrPromptNavigation(null)
   }, [router, vm])
 

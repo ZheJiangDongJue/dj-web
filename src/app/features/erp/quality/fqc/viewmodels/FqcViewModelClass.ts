@@ -495,6 +495,7 @@ export class FqcViewModel extends QualityDocumentBase<FinalInspectionDocument, F
     const nextList = list.slice()
     nextList[rowIndex] = ({ ...(current as any), __localKey: normalizedDetailKey, [key]: nextValue } as any)
     this.details = nextList as any
+    this.markDocumentDirty()
     this.emit()
   }
 
@@ -525,6 +526,7 @@ export class FqcViewModel extends QualityDocumentBase<FinalInspectionDocument, F
     const next = list.filter((it) => this.ensureDetailLocalKey(it as any) !== normalizedDetailKey)
     if (next.length === list.length) return
     this.details = next as any
+    this.markDocumentDirty()
     this.emit()
   }
 
@@ -548,8 +550,10 @@ export class FqcViewModel extends QualityDocumentBase<FinalInspectionDocument, F
    *
    */
   public setBill = (key: string, value: any): void => {
+    const changed = !Object.is((this.bill as any)?.[key], value)
     const next = { ...(this.bill as any), [key]: value } as FinalInspectionDocument
     this.bill = next
+    if (changed) this.markDocumentDirty()
     if (key === 'Materialid') this.updateMaterialCodeFromBill()
     if (key === 'TypeofWorkid') this.updateProcessNameFromBill()
     this.emit()
@@ -603,7 +607,14 @@ export class FqcViewModel extends QualityDocumentBase<FinalInspectionDocument, F
  RQty: allow,
  NotPassBQty: ng,
  } as FinalInspectionDocument
+ const changed =
+   !Object.is((this.bill as any)?.CheckResult, next.CheckResult) ||
+   !Object.is((this.bill as any)?.ChkBQty, next.ChkBQty) ||
+   !Object.is((this.bill as any)?.PassBQty, next.PassBQty) ||
+   !Object.is((this.bill as any)?.RQty, next.RQty) ||
+   !Object.is((this.bill as any)?.NotPassBQty, next.NotPassBQty)
  this.bill = next
+ if (changed) this.markDocumentDirty()
  this.emit()
  }
 
@@ -712,7 +723,13 @@ export class FqcViewModel extends QualityDocumentBase<FinalInspectionDocument, F
       RQty: allow,
       NotPassBQty: ng,
     } as FinalInspectionDocument
+    const changed =
+      !Object.is((this.bill as any)?.ChkBQty, next.ChkBQty) ||
+      !Object.is((this.bill as any)?.PassBQty, next.PassBQty) ||
+      !Object.is((this.bill as any)?.RQty, next.RQty) ||
+      !Object.is((this.bill as any)?.NotPassBQty, next.NotPassBQty)
     this.bill = next
+    if (changed) this.markDocumentDirty()
     this.emit()
   }
 
@@ -724,6 +741,7 @@ export class FqcViewModel extends QualityDocumentBase<FinalInspectionDocument, F
   public replaceState(payload: Partial<{ bill: FinalInspectionDocument; details: FqcDetailView[]; rawDocument: any }>): void {
     if ('bill' in payload && payload.bill) this.bill = payload.bill
     if ('details' in payload && payload.details) this.details = this.ensureDetailsLocalKeys(payload.details)
+    this.markDocumentDataLoaded()
     this.status = parseDocumentStatus((this.bill as any)?.Status ?? (this.bill as any)?.status)
     this.updateMaterialCodeFromBill()
     this.deriveProcessName()

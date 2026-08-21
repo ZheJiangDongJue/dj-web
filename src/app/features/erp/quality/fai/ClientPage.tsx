@@ -15,6 +15,8 @@ import DocumentHeaderActions from '@/app/features/common/documents/DocumentHeade
 import DebugFab from '@/components/molecules/DebugFab'
 import { focusComboboxByAriaLabel } from '@/lib/dom/focusCombobox'
 import { shouldUseDefaultMeasureFrequency } from '@/lib/documents/inspection'
+import { useDocumentLeaveGuard } from '@/lib/documents/useDocumentLeaveGuard'
+import { confirmDocumentLeave } from '@/lib/documents/document-leave-confirmation'
 import { useFaiViewModelClass as useFaiVM } from './viewmodels/FaiViewModelClass'
 import { DocumentStatus } from '@/types/erp-db.generated'
 import { type RequiredFieldRegistration } from '@/lib/validation/requiredFieldManager'
@@ -88,6 +90,7 @@ import { useFaiExternal } from './viewmodels/useFaiExternal'
 function FaiBody({ rowGap, initialScanCode }: { rowGap: number; initialScanCode?: string | null }) {
   const vmStore = useFaiVM()
   const vm = useFaiExternal(vmStore)
+  useDocumentLeaveGuard(vm.shouldConfirmLeave)
   const router = useRouter()
   const searchParams = useSearchParams()
   const queryId = searchParams.get('id')
@@ -96,6 +99,15 @@ function FaiBody({ rowGap, initialScanCode }: { rowGap: number; initialScanCode?
   const queryScanCode = searchParams.get('scancode')
   const lastAutoOpenKeyRef = useRef<string | null>(null)
   const lastAutoActionKeyRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    vm.setNcrPromptNavigation((href) => {
+      void confirmDocumentLeave().then((allowed) => {
+        if (allowed) router.replace(href)
+      })
+    })
+    return () => vm.setNcrPromptNavigation(null)
+  }, [router, vm])
   const warmupTasks = useMemo(
     () => [
       { key: 'inspector', label: '检验员', run: () => vm.loadInspectorOptions?.() },

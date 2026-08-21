@@ -3,14 +3,29 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, fireEvent, act, cleanup } from "@testing-library/react";
 import { RouteTransitionProvider } from "./RouteTransitionContext";
 import { AppLink } from "./AppLink";
+import {
+  registerDocumentLeaveConfirmationHandler,
+  registerDocumentLeaveGuard,
+} from "@/lib/documents/document-leave-confirmation";
+
+const pushSpy = vi.hoisted(() => vi.fn());
 
 vi.mock("next/navigation", () => ({
   usePathname: vi.fn(() => "/start"),
+  useRouter: vi.fn(() => ({ push: pushSpy })),
 }));
 
 vi.mock("next/link", () => ({
   default: ({ href, onClick, children, ...rest }: any) => (
-    <a href={typeof href === "string" ? href : "#"} onClick={onClick} {...rest}>
+    <a
+      href={typeof href === "string" ? href : "#"}
+      onClick={(event) => {
+        onClick?.(event);
+        // 测试替身不执行真实浏览器跳转，避免 jsdom 报告未实现的页面导航。
+        event.preventDefault();
+      }}
+      {...rest}
+    >
       {children}
     </a>
   ),
@@ -18,6 +33,9 @@ vi.mock("next/link", () => ({
 
 afterEach(() => {
   cleanup();
+  registerDocumentLeaveGuard(null);
+  registerDocumentLeaveConfirmationHandler(null);
+  pushSpy.mockClear();
   document.body.removeAttribute("data-route-pending");
 });
 
@@ -68,5 +86,43 @@ describe("AppLink", () => {
       fireEvent.click(getByTestId("link"));
     });
     expect(onClick).toHaveBeenCalledTimes(1);
+  });
+
+  it("有草稿数据且用户取消时不执行路由跳转", async () => {
+    registerDocumentLeaveGuard(() => true);
+    registerDocumentLeaveConfirmationHandler(() => false);
+    const { getByTestId } = render(
+      <RouteTransitionProvider>
+        <AppLink href="/erp/home" data-testid="link">
+          去首页
+        </AppLink>
+      </RouteTransitionProvider>
+    );
+
+    await act(async () => {
+      fireEvent.click(getByTestId("link"));
+      await Promise.resolve();
+    });
+
+    expect(pushSpy).not.toHaveBeenCalled();
+  });
+
+  it("有草稿数据且用户确认时执行路由跳转", async () => {
+    registerDocumentLeaveGuard(() => true);
+    registerDocumentLeaveConfirmationHandler(() => true);
+    const { getByTestId } = render(
+      <RouteTransitionProvider>
+        <AppLink href="/erp/home" data-testid="link">
+          去首页
+        </AppLink>
+      </RouteTransitionProvider>
+    );
+
+    await act(async () => {
+      fireEvent.click(getByTestId("link"));
+      await Promise.resolve();
+    });
+
+    expect(pushSpy).toHaveBeenCalledWith("/erp/home");
   });
 });

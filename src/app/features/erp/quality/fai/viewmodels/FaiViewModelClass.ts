@@ -143,6 +143,8 @@ export class FaiViewModel extends QualityDocumentBase<FirstInspectionDocument, F
    *
    */
   private lastApproveResult: FirstInspectionActionResult | null = null
+  /** 客户端页面提供的 NCR 引导导航回调；为空时回退到浏览器导航。 */
+  private ncrPromptNavigation: ((href: string) => void) | null = null
   /**
    *
    * 物料索引：id -> {code,name}。
@@ -487,6 +489,7 @@ export class FaiViewModel extends QualityDocumentBase<FirstInspectionDocument, F
     const nextList = list.slice()
     nextList[rowIndex] = ({ ...(current as any), __localKey: normalizedDetailKey, [key]: nextValue } as any)
     this.details = nextList as any
+    this.markDocumentDirty()
     this.emit()
   }
 
@@ -517,6 +520,7 @@ export class FaiViewModel extends QualityDocumentBase<FirstInspectionDocument, F
     const next = list.filter((it) => this.ensureDetailLocalKey(it as any) !== normalizedDetailKey)
     if (next.length === list.length) return
     this.details = next as any
+    this.markDocumentDirty()
     this.emit()
   }
 
@@ -540,8 +544,10 @@ export class FaiViewModel extends QualityDocumentBase<FirstInspectionDocument, F
    *
   */
   public setBill = (key: string, value: any): void => {
+    const changed = !Object.is((this.bill as any)?.[key], value)
     const next = { ...(this.bill as any), [key]: value } as FirstInspectionDocument
     this.bill = next
+    if (changed) this.markDocumentDirty()
     if (key === 'Materialid') this.updateMaterialCodeFromBill()
     if (key === 'TypeofWorkid') this.updateProcessNameFromBill()
     this.emit()
@@ -595,7 +601,14 @@ export class FaiViewModel extends QualityDocumentBase<FirstInspectionDocument, F
  RQty: allow,
  NotPassBQty: ng,
  } as FirstInspectionDocument
+ const changed =
+   !Object.is((this.bill as any)?.CheckResult, next.CheckResult) ||
+   !Object.is((this.bill as any)?.ChkBQty, next.ChkBQty) ||
+   !Object.is((this.bill as any)?.PassBQty, next.PassBQty) ||
+   !Object.is((this.bill as any)?.RQty, next.RQty) ||
+   !Object.is((this.bill as any)?.NotPassBQty, next.NotPassBQty)
  this.bill = next
+ if (changed) this.markDocumentDirty()
  this.emit()
  }
 
@@ -703,7 +716,13 @@ export class FaiViewModel extends QualityDocumentBase<FirstInspectionDocument, F
       RQty: allow,
       NotPassBQty: ng,
     } as FirstInspectionDocument
+    const changed =
+      !Object.is((this.bill as any)?.ChkBQty, next.ChkBQty) ||
+      !Object.is((this.bill as any)?.PassBQty, next.PassBQty) ||
+      !Object.is((this.bill as any)?.RQty, next.RQty) ||
+      !Object.is((this.bill as any)?.NotPassBQty, next.NotPassBQty)
     this.bill = next
+    if (changed) this.markDocumentDirty()
     this.emit()
   }
 
@@ -715,6 +734,7 @@ export class FaiViewModel extends QualityDocumentBase<FirstInspectionDocument, F
   public replaceState(payload: Partial<{ bill: FirstInspectionDocument; details: FaiDetailView[]; rawDocument: any }>): void {
     if ('bill' in payload && payload.bill) this.bill = payload.bill
     if ('details' in payload && payload.details) this.details = this.ensureDetailsLocalKeys(payload.details)
+    this.markDocumentDataLoaded()
     this.status = parseDocumentStatus((this.bill as any)?.Status ?? (this.bill as any)?.status)
     this.updateMaterialCodeFromBill()
     this.deriveProcessName()
@@ -895,6 +915,15 @@ export class FaiViewModel extends QualityDocumentBase<FirstInspectionDocument, F
     url.searchParams.set('billId', String(billId))
     const returnTo = buildQualityInspectionReturnTo('fai', billId)
     if (returnTo) url.searchParams.set('returnTo', returnTo)
+    const href = `${url.pathname}${url.search}`
+    if (this.ncrPromptNavigation) {
+      try {
+        this.ncrPromptNavigation(href)
+        return
+      } catch {
+        // 客户端路由异常时继续使用浏览器导航兜底。
+      }
+    }
     try {
       window.location.replace(url.toString())
     } catch {
@@ -902,6 +931,14 @@ export class FaiViewModel extends QualityDocumentBase<FirstInspectionDocument, F
         try { (window.location as any).href = url.toString() } catch { }
       }
     }
+  }
+
+  /**
+   * 设置 FAI 到 NCR 中间页的客户端导航回调。
+   * @param navigate Next Router 的 replace 回调；传入 null 表示页面已卸载。
+   */
+  public setNcrPromptNavigation(navigate: ((href: string) => void) | null): void {
+    this.ncrPromptNavigation = navigate
   }
 
   /**
