@@ -4,6 +4,8 @@ import { useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useRouteTransition } from "@/components/transition/RouteTransitionContext";
 import {
+  allowNextDocumentLeaveConfirmation,
+  allowNextDocumentLeavePopState,
   confirmDocumentLeave,
   hasDocumentLeaveGuard,
 } from "@/lib/documents/document-leave-confirmation";
@@ -34,7 +36,9 @@ export function useNavigateWithTransition(): NavigateApi {
           return;
         }
         void confirmDocumentLeave().then((allowed) => {
-          if (allowed) navigate();
+          if (!allowed) return;
+          allowNextDocumentLeaveConfirmation();
+          navigate();
         });
       },
       replace: (href) => {
@@ -47,7 +51,9 @@ export function useNavigateWithTransition(): NavigateApi {
           return;
         }
         void confirmDocumentLeave().then((allowed) => {
-          if (allowed) navigate();
+          if (!allowed) return;
+          allowNextDocumentLeaveConfirmation();
+          navigate();
         });
       },
       back: () => {
@@ -60,7 +66,9 @@ export function useNavigateWithTransition(): NavigateApi {
           return;
         }
         void confirmDocumentLeave().then((allowed) => {
-          if (allowed) navigate();
+          if (!allowed) return;
+          allowNextDocumentLeavePopState();
+          navigate();
         });
       },
     }),

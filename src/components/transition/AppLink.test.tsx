@@ -4,6 +4,8 @@ import { render, fireEvent, act, cleanup } from "@testing-library/react";
 import { RouteTransitionProvider } from "./RouteTransitionContext";
 import { AppLink } from "./AppLink";
 import {
+  clearAllowedDocumentLeaveConfirmation,
+  confirmDocumentLeave,
   registerDocumentLeaveConfirmationHandler,
   registerDocumentLeaveGuard,
 } from "@/lib/documents/document-leave-confirmation";
@@ -35,6 +37,7 @@ afterEach(() => {
   cleanup();
   registerDocumentLeaveGuard(null);
   registerDocumentLeaveConfirmationHandler(null);
+  clearAllowedDocumentLeaveConfirmation();
   pushSpy.mockClear();
   document.body.removeAttribute("data-route-pending");
 });
@@ -109,7 +112,8 @@ describe("AppLink", () => {
 
   it("有草稿数据且用户确认时执行路由跳转", async () => {
     registerDocumentLeaveGuard(() => true);
-    registerDocumentLeaveConfirmationHandler(() => true);
+    const confirmationHandler = vi.fn(async () => true);
+    registerDocumentLeaveConfirmationHandler(confirmationHandler);
     const { getByTestId } = render(
       <RouteTransitionProvider>
         <AppLink href="/erp/home" data-testid="link">
@@ -124,5 +128,7 @@ describe("AppLink", () => {
     });
 
     expect(pushSpy).toHaveBeenCalledWith("/erp/home");
+    await expect(confirmDocumentLeave()).resolves.toBe(true);
+    expect(confirmationHandler).toHaveBeenCalledOnce();
   });
 });

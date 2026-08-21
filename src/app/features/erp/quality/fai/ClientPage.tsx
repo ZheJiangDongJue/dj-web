@@ -16,7 +16,10 @@ import DebugFab from '@/components/molecules/DebugFab'
 import { focusComboboxByAriaLabel } from '@/lib/dom/focusCombobox'
 import { shouldUseDefaultMeasureFrequency } from '@/lib/documents/inspection'
 import { useDocumentLeaveGuard } from '@/lib/documents/useDocumentLeaveGuard'
-import { confirmDocumentLeave } from '@/lib/documents/document-leave-confirmation'
+import {
+  allowNextDocumentLeaveConfirmation,
+  confirmDocumentLeave,
+} from '@/lib/documents/document-leave-confirmation'
 import { useFaiViewModelClass as useFaiVM } from './viewmodels/FaiViewModelClass'
 import { DocumentStatus } from '@/types/erp-db.generated'
 import { type RequiredFieldRegistration } from '@/lib/validation/requiredFieldManager'
@@ -103,7 +106,9 @@ function FaiBody({ rowGap, initialScanCode }: { rowGap: number; initialScanCode?
   useEffect(() => {
     vm.setNcrPromptNavigation((href) => {
       void confirmDocumentLeave().then((allowed) => {
-        if (allowed) router.replace(href)
+        if (!allowed) return
+        allowNextDocumentLeaveConfirmation()
+        router.replace(href)
       })
     })
     return () => vm.setNcrPromptNavigation(null)

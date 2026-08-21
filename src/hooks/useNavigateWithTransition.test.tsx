@@ -4,6 +4,8 @@ import { render, act, cleanup } from "@testing-library/react";
 import { RouteTransitionProvider } from "@/components/transition/RouteTransitionContext";
 import { useNavigateWithTransition } from "./useNavigateWithTransition";
 import {
+  clearAllowedDocumentLeaveConfirmation,
+  confirmDocumentLeave,
   registerDocumentLeaveConfirmationHandler,
   registerDocumentLeaveGuard,
 } from "@/lib/documents/document-leave-confirmation";
@@ -21,6 +23,7 @@ afterEach(() => {
   cleanup();
   registerDocumentLeaveGuard(null);
   registerDocumentLeaveConfirmationHandler(null);
+  clearAllowedDocumentLeaveConfirmation();
   pushSpy.mockClear();
   replaceSpy.mockClear();
   backSpy.mockClear();
@@ -112,7 +115,8 @@ describe("useNavigateWithTransition", () => {
 
   it("存在草稿且确认后执行统一导航", async () => {
     registerDocumentLeaveGuard(() => true);
-    registerDocumentLeaveConfirmationHandler(() => true);
+    const confirmationHandler = vi.fn(async () => true);
+    registerDocumentLeaveConfirmationHandler(confirmationHandler);
     let api!: ReturnType<typeof useNavigateWithTransition>;
     render(
       <RouteTransitionProvider>
@@ -126,5 +130,7 @@ describe("useNavigateWithTransition", () => {
     });
 
     expect(replaceSpy).toHaveBeenCalledWith("/erp/me");
+    await expect(confirmDocumentLeave()).resolves.toBe(true);
+    expect(confirmationHandler).toHaveBeenCalledOnce();
   });
 });

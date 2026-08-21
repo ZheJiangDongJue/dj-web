@@ -13,6 +13,9 @@ import {
 } from "@/lib/documents/document-refresh-confirmation";
 import {
   allowNextDocumentLeavePopState,
+  allowNextDocumentLeaveConfirmation,
+  clearAllowedDocumentLeaveConfirmation,
+  consumeAllowedDocumentLeaveConfirmation,
   consumeAllowedDocumentLeavePopState,
   confirmDocumentLeave,
   DOCUMENT_LEAVE_CONFIRMATION_MESSAGE,
@@ -215,6 +218,7 @@ export default function FeaturesClientLayout({ children }: { children: React.Rea
    */
   useEffect(() => {
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (consumeAllowedDocumentLeaveConfirmation()) return;
       if (!hasDocumentLeaveGuard()) return;
       event.preventDefault();
       event.returnValue = DOCUMENT_LEAVE_CONFIRMATION_MESSAGE;
@@ -230,6 +234,10 @@ export default function FeaturesClientLayout({ children }: { children: React.Rea
       currentHrefRef.current = window.location.href;
       currentHistoryStateRef.current = window.history.state;
     }
+    return () => {
+      // 非后退导航成功切换路由后清掉未消费标记，避免导航失败或没有第二层守卫时影响下一次离开。
+      clearAllowedDocumentLeaveConfirmation();
+    };
   }, [pathname, searchParamString]);
 
   /**
@@ -242,7 +250,10 @@ export default function FeaturesClientLayout({ children }: { children: React.Rea
    */
   useEffect(() => {
     const handlePopState = (event: PopStateEvent) => {
-      if (consumeAllowedDocumentLeavePopState()) {
+      if (
+        consumeAllowedDocumentLeavePopState() ||
+        consumeAllowedDocumentLeaveConfirmation()
+      ) {
         currentHrefRef.current = window.location.href;
         currentHistoryStateRef.current = event.state;
         return;
@@ -300,6 +311,7 @@ export default function FeaturesClientLayout({ children }: { children: React.Rea
         .then((allowed) => {
           if (!allowed) return;
           if (isHistoryBack) allowNextDocumentLeavePopState();
+          else allowNextDocumentLeaveConfirmation();
           navigate();
         })
         .finally(() => {

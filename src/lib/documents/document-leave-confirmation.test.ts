@@ -1,8 +1,11 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
+  allowNextDocumentLeaveConfirmation,
   allowNextDocumentLeavePopState,
+  clearAllowedDocumentLeaveConfirmation,
   confirmDocumentLeave,
+  consumeAllowedDocumentLeaveConfirmation,
   consumeAllowedDocumentLeavePopState,
   hasDocumentLeaveGuard,
   registerDocumentLeaveConfirmationHandler,
@@ -12,6 +15,7 @@ import {
 afterEach(() => {
   registerDocumentLeaveGuard(null)
   registerDocumentLeaveConfirmationHandler(null)
+  clearAllowedDocumentLeaveConfirmation()
   while (consumeAllowedDocumentLeavePopState()) {
     // 清理跨测试的单次 popstate 放行标记。
   }
@@ -43,6 +47,19 @@ describe('document-leave-confirmation', () => {
     expect(window.confirm).toHaveBeenCalledOnce()
   })
 
+  it('同一次导航确认后再次进入守卫时不重复询问', async () => {
+    registerDocumentLeaveGuard(() => true)
+    const handler = vi.fn(async () => true)
+    registerDocumentLeaveConfirmationHandler(handler)
+
+    await expect(confirmDocumentLeave()).resolves.toBe(true)
+    allowNextDocumentLeaveConfirmation()
+
+    await expect(confirmDocumentLeave()).resolves.toBe(true)
+    expect(handler).toHaveBeenCalledOnce()
+    expect(consumeAllowedDocumentLeaveConfirmation()).toBe(false)
+  })
+
   it('已确认的下一次 popstate 只允许消费一次', () => {
     expect(consumeAllowedDocumentLeavePopState()).toBe(false)
 
@@ -51,4 +68,3 @@ describe('document-leave-confirmation', () => {
     expect(consumeAllowedDocumentLeavePopState()).toBe(false)
   })
 })
-

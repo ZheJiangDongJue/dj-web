@@ -6,6 +6,7 @@ import { forwardRef, useState } from "react";
 import type { AnchorHTMLAttributes, MouseEvent } from "react";
 import { useRouteTransition } from "./RouteTransitionContext";
 import {
+  allowNextDocumentLeaveConfirmation,
   confirmDocumentLeave,
   hasDocumentLeaveGuard,
 } from "@/lib/documents/document-leave-confirmation";
@@ -71,6 +72,7 @@ export const AppLink = forwardRef<HTMLAnchorElement, AppLinkProps>(function AppL
           setPending(false);
           return;
         }
+        allowNextDocumentLeaveConfirmation();
         startTransition(targetPath);
         router.push(targetPath);
       });

@@ -20,6 +20,7 @@ export type DocumentLeaveConfirmationHandler = () => Promise<boolean> | boolean
 let currentGuard: DocumentLeaveGuard | null = null
 let currentHandler: DocumentLeaveConfirmationHandler | null = null
 let bypassNextPopState = false
+let bypassNextConfirmation = false
 
 /**
  * 注册当前单据的离开守卫。
@@ -70,6 +71,8 @@ export function hasDocumentLeaveGuard(): boolean {
  * @returns 无需保护或用户确认离开时为 true；用户取消、确认器异常或不可用时为 false。
  */
 export async function confirmDocumentLeave(): Promise<boolean> {
+  // 已经在上一层导航入口完成过确认时，消费一次性放行标记，避免同一次导航重复询问。
+  if (consumeAllowedDocumentLeaveConfirmation()) return true
   if (!hasDocumentLeaveGuard()) return true
 
   if (currentHandler) {
@@ -89,6 +92,29 @@ export async function confirmDocumentLeave(): Promise<boolean> {
   }
 
   return false
+}
+
+/**
+ * 标记下一次非浏览器后退导航已经完成确认。
+ *
+ * @remarks
+ * AppLink、统一导航 Hook 和页面内部的 router.push/replace 都可能先询问，
+ * 随后才执行真正导航。若导航链路还有第二层守卫，应直接消费该标记而不再弹窗。
+ */
+export function allowNextDocumentLeaveConfirmation(): void {
+  bypassNextConfirmation = true
+}
+
+/** 消费一次已确认的非浏览器后退导航标记。 */
+export function consumeAllowedDocumentLeaveConfirmation(): boolean {
+  if (!bypassNextConfirmation) return false
+  bypassNextConfirmation = false
+  return true
+}
+
+/** 清理尚未被消费的导航放行标记。 */
+export function clearAllowedDocumentLeaveConfirmation(): void {
+  bypassNextConfirmation = false
 }
 
 /**
