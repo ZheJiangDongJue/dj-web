@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { fetchActiveEmployees } from '@/lib/erp/employee'
 import { toOptions } from '@/lib/erp/lookup-core'
 import { fetchMaterials } from '@/lib/erp/material'
@@ -11,13 +11,57 @@ import type {
   FqcLookupSnapshot,
   FqcMaterialIndex,
 } from './FqcLookupTypes'
+import {
+  QualityWarmupStatusPanel,
+  type QualityPageWarmupPhase,
+  type QualityWarmupStatusEntry,
+} from '../shared/pageWarmup'
 
 type FqcLookupContextValue = FqcLookupSnapshot & {
   refresh: () => Promise<void>
 }
 
+/**
+ * FQC 单项基础联查完成后的增量状态。
+ *
+ * @remarks
+ * 每项请求独立回写，保证哪一项先完成，哪一项就先显示绿色状态点；不等待其它请求结束。
+ */
+type FqcLookupProgressPatch =
+  | {
+      readonly key: 'inspector'
+      readonly status: 'ready'
+      readonly options: FqcLookupOption[]
+    }
+  | {
+      readonly key: 'inspector'
+      readonly status: 'error'
+      readonly errorMessage: string
+    }
+  | {
+      readonly key: 'material'
+      readonly status: 'ready'
+      readonly materialIndex: FqcMaterialIndex
+    }
+  | {
+      readonly key: 'material'
+      readonly status: 'error'
+      readonly errorMessage: string
+    }
+  | {
+      readonly key: 'process'
+      readonly status: 'ready'
+      readonly options: FqcLookupOption[]
+    }
+  | {
+      readonly key: 'process'
+      readonly status: 'error'
+      readonly errorMessage: string
+    }
+
 const initialSnapshot: FqcLookupSnapshot = {
   phase: 'loading',
+  visible: true,
   inspectorStatus: 'loading',
   materialStatus: 'loading',
   processStatus: 'loading',
@@ -95,12 +139,56 @@ function resolveEntryStatus<T>(result: PromiseSettledResult<T>): FqcLookupEntryS
  */
 export function FqcLookupProvider({ children }: { children: ReactNode }) {
   const [snapshot, setSnapshot] = useState<FqcLookupSnapshot>(initialSnapshot)
+  const readyHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const fetchSnapshot = useCallback(async (): Promise<FqcLookupSnapshot> => {
+  const fetchSnapshot = useCallback(async (
+    onProgress?: (patch: FqcLookupProgressPatch) => void,
+  ): Promise<FqcLookupSnapshot> => {
+    const inspectorRequest = fetchActiveEmployees()
+    const materialRequest = fetchMaterials()
+    const processRequest = fetchWorkTypes()
+
+    void inspectorRequest.then(
+      (value) => onProgress?.({
+        key: 'inspector',
+        status: 'ready',
+        options: mapInspectorOptions(value),
+      }),
+      (reason) => onProgress?.({
+        key: 'inspector',
+        status: 'error',
+        errorMessage: toErrorMessage(reason),
+      }),
+    )
+    void materialRequest.then(
+      (value) => onProgress?.({
+        key: 'material',
+        status: 'ready',
+        materialIndex: mapMaterialIndex(value),
+      }),
+      (reason) => onProgress?.({
+        key: 'material',
+        status: 'error',
+        errorMessage: toErrorMessage(reason),
+      }),
+    )
+    void processRequest.then(
+      (value) => onProgress?.({
+        key: 'process',
+        status: 'ready',
+        options: mapProcessOptions(value),
+      }),
+      (reason) => onProgress?.({
+        key: 'process',
+        status: 'error',
+        errorMessage: toErrorMessage(reason),
+      }),
+    )
+
     const [inspectorResult, materialResult, processResult] = await Promise.allSettled([
-      fetchActiveEmployees(),
-      fetchMaterials(),
-      fetchWorkTypes(),
+      inspectorRequest,
+      materialRequest,
+      processRequest,
     ])
 
     const inspectorStatus = resolveEntryStatus(inspectorResult)
@@ -110,6 +198,7 @@ export function FqcLookupProvider({ children }: { children: ReactNode }) {
 
     return {
       phase: hasError ? 'error' : 'ready',
+      visible: true,
       inspectorStatus,
       materialStatus,
       processStatus,
@@ -130,27 +219,109 @@ export function FqcLookupProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
+  /**
+   * 将单项联查结果即时合并到共享快照。
+   * @param patch 已完成或失败的单项联查结果。
+   */
+  const applyLookupProgress = useCallback((patch: FqcLookupProgressPatch) => {
+    setSnapshot((current) => {
+      const errors = { ...current.errors }
+      const next: FqcLookupSnapshot = { ...current, errors }
+
+      if (patch.key === 'inspector') {
+        next.inspectorStatus = patch.status
+        if (patch.status === 'ready') {
+          next.inspectorOptions = patch.options
+          delete errors.inspector
+        } else {
+          errors.inspector = patch.errorMessage
+        }
+      } else if (patch.key === 'material') {
+        next.materialStatus = patch.status
+        if (patch.status === 'ready') {
+          next.materialIndex = patch.materialIndex
+          delete errors.material
+        } else {
+          errors.material = patch.errorMessage
+        }
+      } else {
+        next.processStatus = patch.status
+        if (patch.status === 'ready') {
+          next.processOptions = patch.options
+          delete errors.process
+        } else {
+          errors.process = patch.errorMessage
+        }
+      }
+
+      const statuses = [next.inspectorStatus, next.materialStatus, next.processStatus]
+      next.visible = true
+      const allSettled = statuses.every((status) => status === 'ready' || status === 'error')
+      next.phase = allSettled
+        ? statuses.includes('error') ? 'error' : 'ready'
+        : 'loading'
+      return next
+    })
+  }, [])
+
+  /**
+   * 清理完成态提示条的隐藏计时器。
+   */
+  const clearReadyHideTimer = useCallback(() => {
+    if (readyHideTimerRef.current) {
+      clearTimeout(readyHideTimerRef.current)
+      readyHideTimerRef.current = null
+    }
+  }, [])
+
+  /**
+   * 按原质检页行为，在全部基础联查成功后短暂保留绿色状态灯。
+   * @param phase 联查整体阶段；错误态和加载态不启动隐藏计时器。
+   */
+  const scheduleReadyHide = useCallback((phase: FqcLookupSnapshot['phase']) => {
+    clearReadyHideTimer()
+    if (phase !== 'ready') return
+
+    readyHideTimerRef.current = setTimeout(() => {
+      readyHideTimerRef.current = null
+      setSnapshot((current) => (
+        current.phase === 'ready' ? { ...current, visible: false } : current
+      ))
+    }, 1800)
+  }, [clearReadyHideTimer])
+
   const refresh = useCallback(async () => {
+    clearReadyHideTimer()
     setSnapshot((current) => ({
       ...current,
       phase: 'loading',
+      visible: true,
       inspectorStatus: 'loading',
       materialStatus: 'loading',
       processStatus: 'loading',
       errors: {},
     }))
-    setSnapshot(await fetchSnapshot())
-  }, [fetchSnapshot])
+    const next = await fetchSnapshot(applyLookupProgress)
+    setSnapshot(next)
+    scheduleReadyHide(next.phase)
+  }, [applyLookupProgress, clearReadyHideTimer, fetchSnapshot, scheduleReadyHide])
 
   useEffect(() => {
     let cancelled = false
-    void fetchSnapshot().then((next) => {
-      if (!cancelled) setSnapshot(next)
+    clearReadyHideTimer()
+    void fetchSnapshot((patch) => {
+      if (!cancelled) applyLookupProgress(patch)
+    }).then((next) => {
+      if (!cancelled) {
+        setSnapshot(next)
+        scheduleReadyHide(next.phase)
+      }
     })
     return () => {
       cancelled = true
+      clearReadyHideTimer()
     }
-  }, [fetchSnapshot])
+  }, [applyLookupProgress, clearReadyHideTimer, fetchSnapshot, scheduleReadyHide])
 
   const contextValue = useMemo<FqcLookupContextValue>(
     () => ({ ...snapshot, refresh }),
@@ -174,7 +345,7 @@ export function useFqcLookup(): FqcLookupContextValue {
 /**
  * FQC 基础联查状态提示条。
  * @remarks
- * 已完成状态不显示提示，命中共享布局状态时不会重新出现加载条。
+ * 已完成状态短暂保留提示条，让每个已加载基础数据项先显示绿色状态点，再按原逻辑隐藏。
  */
 export function FqcLookupWarmupStrip({
   state,
@@ -183,36 +354,47 @@ export function FqcLookupWarmupStrip({
   state: FqcLookupSnapshot
   className?: string
 }) {
-  if (state.phase === 'idle' || state.phase === 'ready') return null
+  if (state.phase === 'idle' || state.visible === false) return null
 
-  const summary =
-    state.phase === 'loading'
-      ? '基础数据加载中'
-      : `基础数据部分加载失败（${Object.keys(state.errors).length} 项）`
+  const entries: QualityWarmupStatusEntry[] = [
+    {
+      key: 'inspector',
+      label: '检验员',
+      status: mapLookupStatusToWarmupStatus(state.inspectorStatus),
+      errorMessage: state.errors.inspector,
+    },
+    {
+      key: 'material',
+      label: '物料',
+      status: mapLookupStatusToWarmupStatus(state.materialStatus),
+      errorMessage: state.errors.material,
+    },
+    {
+      key: 'process',
+      label: '工序',
+      status: mapLookupStatusToWarmupStatus(state.processStatus),
+      errorMessage: state.errors.process,
+    },
+  ]
+  const phase: QualityPageWarmupPhase = state.phase === 'loading'
+    ? 'running'
+    : state.phase === 'ready'
+      ? 'done'
+      : 'error'
 
-  return (
-    <div
-      className={[
-        'flex flex-wrap items-center gap-2 rounded-md border px-3 py-2 text-xs',
-        state.phase === 'loading'
-          ? 'border-[color-mix(in_srgb,var(--color-accent)_38%,transparent)] t-text-primary'
-          : 'border-red-500/35 text-red-700 dark:text-red-300',
-        className,
-      ]
-        .filter(Boolean)
-        .join(' ')}
-      role="status"
-      aria-live="polite"
-    >
-      <span>{summary}</span>
-      {state.phase === 'loading' && <span className="animate-pulse">请稍候…</span>}
-      {state.phase === 'error' && (
-        <span>
-          {Object.entries(state.errors)
-            .map(([key, message]) => `${key}: ${message}`)
-            .join('；')}
-        </span>
-      )}
-    </div>
-  )
+  return <QualityWarmupStatusPanel phase={phase} entries={entries} className={className} />
+}
+
+/**
+ * 将 FQC 联查状态映射为公共基础数据面板状态。
+ * @param status FQC 单类基础联查状态。
+ * @returns 公共状态面板使用的状态。
+ */
+function mapLookupStatusToWarmupStatus(
+  status: FqcLookupEntryStatus,
+): QualityWarmupStatusEntry['status'] {
+  if (status === 'ready') return 'done'
+  if (status === 'error') return 'error'
+  if (status === 'loading') return 'running'
+  return 'pending'
 }

@@ -55,6 +55,7 @@ describe('useQualityPageWarmup', () => {
     expect(latestState?.summary).toContain('基础数据加载中')
     expect(container.textContent).toContain('检验员')
     expect(container.textContent).toContain('物料')
+    expect(container.textContent).toContain('正在加载：检验员、物料')
 
     await act(async () => {
       inspector.resolve()
@@ -65,6 +66,7 @@ describe('useQualityPageWarmup', () => {
     expect(latestState?.doneCount).toBe(1)
     expect(latestState?.runningCount).toBe(1)
     expect(latestState?.summary).toContain('1/2')
+    expect(container.querySelector('.bg-emerald-500')).toBeTruthy()
 
     await act(async () => {
       material.resolve()
@@ -75,7 +77,9 @@ describe('useQualityPageWarmup', () => {
     expect(latestState?.phase).toBe('done')
     expect(latestState?.interactive).toBe(true)
     expect(latestState?.doneCount).toBe(2)
+    expect(latestState?.visible).toBe(true)
     expect(latestState?.summary).toContain('基础数据已补齐')
+    expect(container.textContent).toContain('基础数据已补齐')
   })
 
   it('当任务失败时会进入 error 状态并标记失败项', async () => {

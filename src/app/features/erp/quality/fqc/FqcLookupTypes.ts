@@ -24,6 +24,11 @@ export type FqcLookupEntryStatus = 'idle' | 'loading' | 'ready' | 'error'
  */
 export type FqcLookupSnapshot = {
   phase: 'idle' | 'loading' | 'ready' | 'error'
+  /**
+   * 完成态提示条是否仍处于短暂展示窗口内。
+   * @remarks Provider 在联查全部完成后按原逻辑延迟隐藏；错误态不会自动隐藏。
+   */
+  visible?: boolean
   inspectorStatus: FqcLookupEntryStatus
   materialStatus: FqcLookupEntryStatus
   processStatus: FqcLookupEntryStatus

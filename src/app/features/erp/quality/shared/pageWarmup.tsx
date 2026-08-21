@@ -43,6 +43,29 @@ export interface QualityPageWarmupEntry {
 }
 
 /**
+ * 状态展示面板的通用条目。
+ *
+ * @remarks
+ * FAI、NCR 使用预热 Hook，FQC 使用路由共享联查；两者的数据来源不同，展示语义保持一致。
+ */
+export interface QualityWarmupStatusEntry {
+  readonly key: string
+  readonly label: string
+  readonly status: QualityPageWarmupTaskStatus
+  readonly errorMessage?: string
+}
+
+/**
+ * 基础数据状态面板参数。
+ */
+export interface QualityWarmupStatusPanelProps {
+  readonly phase: QualityPageWarmupPhase
+  readonly entries: readonly QualityWarmupStatusEntry[]
+  readonly visible?: boolean
+  readonly className?: string
+}
+
+/**
  *
  * useQualityPageWarmup 入参。
  *
@@ -269,10 +292,9 @@ function cx(...values: Array<string | false | null | undefined>): string {
 }
 
 /**
- *
  * 根据任务状态返回状态点样式。
  * @param status 任务状态。
- *
+ * @returns 状态点 className。
  */
 function getDotClass(status: QualityPageWarmupTaskStatus): string {
   if (status === 'done') return 'bg-emerald-500'
@@ -282,16 +304,47 @@ function getDotClass(status: QualityPageWarmupTaskStatus): string {
 }
 
 /**
- *
- * 根据任务状态返回标签样式。
+ * 根据任务状态返回紧凑标签样式。
  * @param status 任务状态。
- *
+ * @returns 标签 border 和文字 className。
  */
 function getChipClass(status: QualityPageWarmupTaskStatus): string {
   if (status === 'done') return 'border-emerald-500/35 text-emerald-700 dark:text-emerald-300'
   if (status === 'error') return 'border-red-500/35 text-red-700 dark:text-red-300'
   if (status === 'running') return 'border-[color-mix(in_srgb,var(--color-accent)_38%,transparent)] t-text-primary'
   return 'border-[var(--color-border)] t-text-tertiary'
+}
+
+/**
+ * 将状态条目转换为紧凑提示条第一行的摘要。
+ * @param phase 整体加载阶段。
+ * @param entries 各项基础数据状态。
+ * @returns 当前阶段摘要；加载中会明确列出正在加载的数据项。
+ */
+function getStripSummary(
+  phase: QualityPageWarmupPhase,
+  entries: readonly QualityWarmupStatusEntry[],
+  doneCount: number,
+  totalCount: number,
+): string {
+  if (phase === 'running') {
+    const runningLabels = entries.filter((entry) => entry.status === 'running').map((entry) => entry.label)
+    if (runningLabels.length > 0) return `正在加载：${runningLabels.join('、')}`
+
+    const pendingLabels = entries.filter((entry) => entry.status === 'pending').map((entry) => entry.label)
+    if (pendingLabels.length > 0) return `等待加载：${pendingLabels.join('、')}`
+    return '基础数据加载中'
+  }
+
+  if (phase === 'error') {
+    const errorEntries = entries.filter((entry) => entry.status === 'error')
+    return errorEntries.length > 0
+      ? `加载失败：${errorEntries.map((entry) => entry.label).join('、')}`
+      : '基础数据部分加载失败'
+  }
+
+  if (phase === 'done') return `基础数据已补齐 ${doneCount}/${totalCount}`
+  return '基础数据待加载'
 }
 
 /**
@@ -309,32 +362,61 @@ export function QualityPageWarmupStrip({
   readonly state: QualityPageWarmupState
   readonly className?: string
 }) {
-  if (!state.visible || state.totalCount <= 0) return null
+  return (
+    <QualityWarmupStatusPanel
+      phase={state.phase}
+      entries={state.entries}
+      visible={state.visible}
+      className={className}
+    />
+  )
+}
 
-  const stripClassName = cx(
+/**
+ * 基础数据加载状态条。
+ *
+ * @remarks
+ * 保持单据头部原有的两行紧凑提示条样式，同时在加载中摘要里指出当前基础数据。
+ *
+ * @param props 面板阶段、条目状态和布局参数。
+ * @returns 基础数据状态条；不可见或没有条目时返回 null。
+ */
+export function QualityWarmupStatusPanel({
+  phase,
+  entries,
+  visible = true,
+  className,
+}: QualityWarmupStatusPanelProps) {
+  if (!visible || entries.length === 0) return null
+
+  const totalCount = entries.length
+  const doneCount = entries.filter((entry) => entry.status === 'done').length
+  const summary = getStripSummary(phase, entries, doneCount, totalCount)
+  const panelClassName = cx(
     'rounded-md border px-2.5 py-2 text-[12px]',
-    state.phase === 'error'
+    phase === 'error'
       ? 'border-red-500/30 bg-red-500/[0.06]'
-      : state.phase === 'done'
+      : phase === 'done'
         ? 'border-emerald-500/30 bg-emerald-500/[0.06]'
         : 'border-[color-mix(in_srgb,var(--color-accent)_28%,var(--color-border))] bg-[color-mix(in_srgb,var(--color-accent)_7%,transparent)]',
     className,
   )
 
   return (
-    <div className={stripClassName} role="status" aria-live="polite">
+    <div className={panelClassName} role="status" aria-live="polite">
       <div className="flex items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
           <span
             aria-hidden="true"
-            className={cx('size-2 shrink-0 rounded-full', getDotClass(state.phase === 'error' ? 'error' : state.phase === 'done' ? 'done' : 'running'))}
+            className={cx('size-2 shrink-0 rounded-full', getDotClass(phase === 'error' ? 'error' : phase === 'done' ? 'done' : 'running'))}
           />
-          <span className="truncate font-medium t-text-primary">{state.summary}</span>
+          <span className="truncate font-medium t-text-primary">{summary}</span>
         </div>
-        <span className="shrink-0 t-text-secondary">{state.doneCount}/{state.totalCount}</span>
+        <span className="shrink-0 t-text-secondary">{doneCount}/{totalCount}</span>
       </div>
+
       <div className="mt-1.5 flex flex-wrap gap-1">
-        {state.entries.map((entry) => (
+        {entries.map((entry) => (
           <span
             key={entry.key}
             className={cx(
