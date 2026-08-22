@@ -2,7 +2,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { notFound, usePathname, useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
-import { scanQRCode } from "@/lib/android-bridge";
+import { registerAndroidBackHandler, scanQRCode } from "@/lib/android-bridge";
 import {
   buildQualityInspectionReturnTo,
   normalizeInternalReturnTo,
@@ -340,6 +340,17 @@ export default function FeaturesClientLayout({ children }: { children: React.Rea
       }
     });
   }, [navigateAfterLeaveConfirmation, pathname, router, returnTarget]);
+
+  /**
+   * 注册 Android 系统返回键处理器。
+   *
+   * 原生只负责发起返回请求，具体的 returnTo、离开确认和路由兜底继续复用网页返回按钮的同一套逻辑。
+   */
+  useEffect(() => {
+    return registerAndroidBackHandler(() => {
+      onBack();
+    });
+  }, [onBack]);
 
   return (
     <FeaturesLayoutContext.Provider value={ctxValue}>

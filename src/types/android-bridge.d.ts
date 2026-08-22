@@ -58,6 +58,12 @@ declare global {
     handleNotification: (type: string, data?: unknown) => void;
 
     /**
+     * 原生请求当前网页处理返回键。
+     * 返回 true 表示网页已接管，false 表示原生需要执行兜底逻辑。
+     */
+    handleBack?: () => boolean;
+
+    /**
      *
      * 原生请求刷新 Web 数据（参数定义由业务决定）。
      *

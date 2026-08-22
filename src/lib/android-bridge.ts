@@ -97,6 +97,11 @@ export interface FetchImageBase64Result extends AndroidBridgeResult {
 
 export interface WebMethodsObject {
   handleNotification: (type: string, data?: unknown) => void;
+  /**
+   * 原生请求当前网页处理返回键。
+   * @returns true 表示网页已经接管返回流程，false 表示应由原生兜底。
+   */
+  handleBack?: () => boolean;
   refreshData: (params?: unknown) => unknown;
   getPageInfo: () => {
     path: string;
@@ -116,6 +121,45 @@ type AndroidAppLifecycleState = {
 };
 
 const GLOBAL_ANDROID_APP_LIFECYCLE_KEY = "__dj_android_app_lifecycle__";
+
+type AndroidBackHandler = () => void;
+
+/** 当前已挂载页面的 Android 返回处理器。 */
+let currentAndroidBackHandler: AndroidBackHandler | null = null;
+
+/**
+ * 注册当前页面的 Android 返回处理器。
+ *
+ * @param handler 页面返回逻辑；传入 null 表示清空当前处理器。
+ * @returns 清理函数；仅当当前处理器仍是本次注册项时恢复之前的处理器。
+ */
+export function registerAndroidBackHandler(handler: AndroidBackHandler | null): () => void {
+  const previousHandler = currentAndroidBackHandler;
+  currentAndroidBackHandler = handler;
+
+  return () => {
+    if (currentAndroidBackHandler === handler) {
+      currentAndroidBackHandler = previousHandler;
+    }
+  };
+}
+
+/**
+ * 执行网页返回处理器。
+ *
+ * @returns true 表示网页已接管；没有页面处理器或处理器异常时返回 false，交给原生兜底。
+ */
+function handleAndroidBackRequest(): boolean {
+  if (!currentAndroidBackHandler) return false;
+
+  try {
+    currentAndroidBackHandler();
+    return true;
+  } catch (error) {
+    console.error("[AndroidBridge] 网页返回处理失败:", error);
+    return false;
+  }
+}
 
 function getAndroidAppLifecycleHost(): any {
   if (typeof window !== "undefined") return window as any;
@@ -356,6 +400,7 @@ export function ensureWebMethods(): WebMethodsObject {
     // SSR 环境直接返回一个空壳对象，避免报错
     return {
       handleNotification: () => void 0,
+      handleBack: () => handleAndroidBackRequest(),
       refreshData: () => ({}),
       getPageInfo: () => ({ path: "", query: "", title: "", url: "" }),
     };
@@ -407,7 +452,11 @@ export function ensureWebMethods(): WebMethodsObject {
           return { path: "", query: "", title: "", url: "" };
         }
       },
+      handleBack: () => handleAndroidBackRequest(),
     };
+  } else if (typeof window.WebMethods.handleBack !== "function") {
+    // 原生可能先创建了旧版 WebMethods，补齐返回协议而不覆盖其它已有方法。
+    window.WebMethods.handleBack = () => handleAndroidBackRequest();
   }
 
   return window.WebMethods!;
