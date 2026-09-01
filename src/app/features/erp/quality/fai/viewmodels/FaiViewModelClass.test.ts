@@ -173,9 +173,13 @@ describe('FaiViewModelClass', () => {
     vi.resetModules()
     const { FaiViewModel } = await import('./FaiViewModelClass')
 
+    let serverStatus = DocumentStatus.已审批
     const appService = {
       save: vi.fn(async () => ({ id: 33, aggregate: null })),
-      unapprove: vi.fn(async () => ({ success: true, message: '' })),
+      unapprove: vi.fn(async () => {
+        serverStatus = DocumentStatus.未审批
+        return { success: true, message: '' }
+      }),
       fetchById: vi.fn(async () => ({ document: null, details: [] })),
     } as unknown as FirstInspectionApplicationService
 
@@ -184,7 +188,14 @@ describe('FaiViewModelClass', () => {
     ;(vm.bill as any).DocumentStatus = DocumentStatus.已审批
     await vm.handleSave()
     vm.status = DocumentStatus.已审批
-    ;(appService as any).fetchById = vi.fn(async () => ({ document: vm.bill, details: vm.details }))
+    ;(appService as any).fetchById = vi.fn(async () => ({
+      document: {
+        ...(vm.bill as any),
+        Status: serverStatus,
+        DocumentStatus: serverStatus,
+      },
+      details: vm.details,
+    }))
 
     const billBefore = vm.bill
     const ok = await vm.handleUnapprove()
@@ -208,7 +219,14 @@ describe('FaiViewModelClass', () => {
     vm.required.checkEmptyAndFocus = vi.fn(() => ({ hasEmpty: false }))
     ;(vm.bill as any).Code = 'FAI-001'
     ;(vm.bill as any).DocumentStatus = DocumentStatus.未审批
-    ;(appService as any).fetchById = vi.fn(async () => ({ document: vm.bill, details: vm.details }))
+    ;(appService as any).fetchById = vi.fn(async () => ({
+      document: {
+        ...(vm.bill as any),
+        Status: DocumentStatus.已审批,
+        DocumentStatus: DocumentStatus.已审批,
+      },
+      details: vm.details,
+    }))
 
     const ok = await vm.handleApprove()
 
@@ -232,6 +250,14 @@ describe('FaiViewModelClass', () => {
     ;(vm.bill as any).DocumentStatus = DocumentStatus.未审批
     ;(vm.bill as any).CheckResult = 4
     ;(vm.bill as any).NotPassBQty = 1
+    ;(appService as any).fetchById = vi.fn(async () => ({
+      document: {
+        ...(vm.bill as any),
+        Status: DocumentStatus.已审批,
+        DocumentStatus: DocumentStatus.已审批,
+      },
+      details: vm.details,
+    }))
     const assignMock = vi.fn()
     ;(globalThis as any).window = { location: { origin: 'http://localhost', assign: assignMock } }
 

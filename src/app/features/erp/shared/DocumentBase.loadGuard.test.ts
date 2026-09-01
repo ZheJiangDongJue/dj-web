@@ -110,7 +110,7 @@ describe('DocumentBase 加载时序保护（loadSeq）', () => {
     expect(state.status).toBe(200)
     expect(state.docActions.state.id).toBe(2)
     expect(doc.hasDocumentData).toBe(true)
-    expect(doc.shouldConfirmLeave).toBe(true)
+    expect(doc.shouldConfirmLeave).toBe(false)
   })
 
   it('reset 会取消进行中的 refresh 回写', async () => {
@@ -164,7 +164,7 @@ describe('DocumentBase 加载时序保护（loadSeq）', () => {
     expect(doc.shouldConfirmLeave).toBe(false)
   })
 
-  it('加载数据会清除新建态脏标记并进入已装载态', () => {
+  it('加载已保存数据会清除新建态脏标记且不需要离开确认', () => {
     const doc = new DocumentBase<AnyDoc, AnyDetail>(createOptions({
       save: async () => ({}),
       approve: async () => ({}),
@@ -177,6 +177,24 @@ describe('DocumentBase 加载时序保护（loadSeq）', () => {
     doc.markDocumentDataLoaded()
 
     expect(doc.hasDocumentData).toBe(true)
+    expect(doc.shouldConfirmLeave).toBe(false)
+  })
+
+  it('未落库草稿需要确认，保存后不确认，保存单据再次修改后需要确认', () => {
+    const doc = new DocumentBase<AnyDoc, AnyDetail>(createOptions({
+      save: async () => ({}),
+      approve: async () => ({}),
+      unapprove: async () => ({}),
+      extractId: () => 0,
+    }))
+
+    doc.markDocumentDraftLoaded()
+    expect(doc.shouldConfirmLeave).toBe(true)
+
+    doc.markDocumentDataLoaded()
+    expect(doc.shouldConfirmLeave).toBe(false)
+
+    doc.markDocumentDirty()
     expect(doc.shouldConfirmLeave).toBe(true)
   })
 

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useRouteTransition } from "@/components/transition/RouteTransitionContext";
 import {
   allowNextDocumentLeaveConfirmation,
-  allowNextDocumentLeavePopState,
+  allowNextDocumentLeaveNavigation,
   confirmDocumentLeave,
   hasDocumentLeaveGuard,
 } from "@/lib/documents/document-leave-confirmation";
@@ -67,7 +67,7 @@ export function useNavigateWithTransition(): NavigateApi {
         }
         void confirmDocumentLeave().then((allowed) => {
           if (!allowed) return;
-          allowNextDocumentLeavePopState();
+          allowNextDocumentLeaveNavigation(true);
           navigate();
         });
       },

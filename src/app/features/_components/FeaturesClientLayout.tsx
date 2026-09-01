@@ -12,8 +12,7 @@ import {
   type DocumentRefreshConfirmationOptions,
 } from "@/lib/documents/document-refresh-confirmation";
 import {
-  allowNextDocumentLeavePopState,
-  allowNextDocumentLeaveConfirmation,
+  allowNextDocumentLeaveNavigation,
   clearAllowedDocumentLeaveConfirmation,
   consumeAllowedDocumentLeaveConfirmation,
   consumeAllowedDocumentLeavePopState,
@@ -250,10 +249,10 @@ export default function FeaturesClientLayout({ children }: { children: React.Rea
    */
   useEffect(() => {
     const handlePopState = (event: PopStateEvent) => {
-      if (
-        consumeAllowedDocumentLeavePopState() ||
-        consumeAllowedDocumentLeaveConfirmation()
-      ) {
+      // 两个标记必须分别消费：同文档返回走 popstate，跨文档返回可能只走 beforeunload。
+      const popStateAllowed = consumeAllowedDocumentLeavePopState();
+      const unloadAllowed = consumeAllowedDocumentLeaveConfirmation();
+      if (popStateAllowed || unloadAllowed) {
         currentHrefRef.current = window.location.href;
         currentHistoryStateRef.current = event.state;
         return;
@@ -285,7 +284,7 @@ export default function FeaturesClientLayout({ children }: { children: React.Rea
       void confirmDocumentLeave()
         .then((allowed) => {
           if (!allowed) return;
-          allowNextDocumentLeavePopState();
+          allowNextDocumentLeaveNavigation(true);
           window.history.go(-1);
         })
         .finally(() => {
@@ -310,8 +309,7 @@ export default function FeaturesClientLayout({ children }: { children: React.Rea
       void confirmDocumentLeave()
         .then((allowed) => {
           if (!allowed) return;
-          if (isHistoryBack) allowNextDocumentLeavePopState();
-          else allowNextDocumentLeaveConfirmation();
+          allowNextDocumentLeaveNavigation(isHistoryBack);
           navigate();
         })
         .finally(() => {

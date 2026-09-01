@@ -439,8 +439,10 @@ export class NcrViewModel extends QualityDocumentBase<DefectiveReworkOrderDocume
         return true
       },
       autoRefreshAfterSave: true,
-      refreshAfterApprove: false,
-      refreshAfterUnapprove: false,
+      // 审批/反审批会由服务端更新 ApprovalTime/UpdateTime，成功后必须同步完整快照，
+      // 否则下一次执行相反动作时会把本次自身操作误判为外部修改。
+      refreshAfterApprove: true,
+      refreshAfterUnapprove: true,
       onAfterSave: async (id) => {
         const n = typeof id === 'number' ? id : Number(id)
         if (Number.isFinite(n) && n > 0) {
@@ -576,7 +578,7 @@ export class NcrViewModel extends QualityDocumentBase<DefectiveReworkOrderDocume
       try { this.createNewBill() } catch { }
 
       // 草稿不落库：id 仍为空（currentId=null），但需要规范化字段名与 status 读法
-      await this.enrichAfterRefresh(result.document as any, result.details as any)
+      await this.enrichAfterRefresh(result.document as any, result.details as any, { isDraft: true })
       this.applySourceContext({
         type: 'DRAFT_LOADED',
         document: result.document,
@@ -624,7 +626,7 @@ export class NcrViewModel extends QualityDocumentBase<DefectiveReworkOrderDocume
 
     try { this.createNewBill() } catch { }
 
-    await this.enrichAfterRefresh(result.document as any, result.details as any)
+    await this.enrichAfterRefresh(result.document as any, result.details as any, { isDraft: true })
     this.applySourceContext(result)
 
     const preserve = options?.preserveReworkSelection
@@ -1653,9 +1655,14 @@ export class NcrViewModel extends QualityDocumentBase<DefectiveReworkOrderDocume
    * - 明细行同步键名：确保 Adversesituation 无论后端返回大小写如何，前端都能读取到。\\n
    * @param document 后端返回的单据头。
    * @param details 后端返回的明细列表。
+   * @param options 生命周期标记；扫码生成的未落库草稿必须显式标记为 draft。
    *
    */
-  private async enrichAfterRefresh(document: any, details: any[]): Promise<void> {
+  private async enrichAfterRefresh(
+    document: any,
+    details: any[],
+    options: { readonly isDraft?: boolean } = {},
+  ): Promise<void> {
     const rawDoc = (document as any) ?? null
     const normDoc = this.normalizeCaseInsensitive(rawDoc, NcrViewModel.docNormalizeTemplate)
 
@@ -1685,7 +1692,8 @@ export class NcrViewModel extends QualityDocumentBase<DefectiveReworkOrderDocume
     this.applySourceContextFromDocument(enriched)
     this.isReworkFlowDetailRequired = false
     this.details = normDetails as any[]
-    this.markDocumentDataLoaded()
+    if (options.isDraft) this.markDocumentDraftLoaded()
+    else this.markDocumentDataLoaded()
     this.emit()
     void this.refreshReworkFlowDetailRequiredState(enriched)
     this.ensureAtLeastOneDetailRow()

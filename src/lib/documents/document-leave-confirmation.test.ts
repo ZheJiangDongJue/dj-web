@@ -2,6 +2,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   allowNextDocumentLeaveConfirmation,
+  allowNextDocumentLeaveNavigation,
   allowNextDocumentLeavePopState,
   clearAllowedDocumentLeaveConfirmation,
   confirmDocumentLeave,
@@ -66,5 +67,15 @@ describe('document-leave-confirmation', () => {
     allowNextDocumentLeavePopState()
     expect(consumeAllowedDocumentLeavePopState()).toBe(true)
     expect(consumeAllowedDocumentLeavePopState()).toBe(false)
+  })
+
+  it('历史返回确认后同时放行 popstate 与 beforeunload', () => {
+    allowNextDocumentLeaveNavigation(true)
+
+    expect(consumeAllowedDocumentLeavePopState()).toBe(true)
+    expect(consumeAllowedDocumentLeaveConfirmation()).toBe(true)
+
+    expect(consumeAllowedDocumentLeavePopState()).toBe(false)
+    expect(consumeAllowedDocumentLeaveConfirmation()).toBe(false)
   })
 })

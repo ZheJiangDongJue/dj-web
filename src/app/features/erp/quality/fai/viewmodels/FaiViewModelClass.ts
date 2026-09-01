@@ -200,8 +200,9 @@ export class FaiViewModel extends QualityDocumentBase<FirstInspectionDocument, F
         unapproved: DocumentStatus.未审批,
       },
       autoRefreshAfterSave: false,
-      refreshAfterApprove: false,
-      refreshAfterUnapprove: false,
+      // 审批/反审批会由服务端更新版本字段，成功后由 DocumentBase 统一回拉最新快照。
+      refreshAfterApprove: true,
+      refreshAfterUnapprove: true,
       initialId: null,
       statusApprovedValue: DocumentStatus.已审批,
       statusUnapprovedValue: DocumentStatus.未审批,
@@ -270,8 +271,9 @@ export class FaiViewModel extends QualityDocumentBase<FirstInspectionDocument, F
         unapproved: DocumentStatus.未审批,
       },
       autoRefreshAfterSave: false,
-      refreshAfterApprove: false,
-      refreshAfterUnapprove: false,
+      // 审批/反审批会由服务端更新版本字段，成功后由 DocumentBase 统一回拉最新快照。
+      refreshAfterApprove: true,
+      refreshAfterUnapprove: true,
       validateBeforeApprove: () => this.validateRequiredBeforeApprove(),
       onAfterApprove: async (id) => { await this.handleAfterApprove(id) },
       onAfterRefresh: async ({ document, details }, ctx) => {
@@ -333,7 +335,7 @@ export class FaiViewModel extends QualityDocumentBase<FirstInspectionDocument, F
 
     // 初始化 Debug 菜单
     this.debugMenu = [
-      { id: 'moni', label: '模拟扫码', onClick: () => { try { const mock = this.buildMockScanState(); this.replaceState(mock as any) } catch (err) { /* istanbul ignore next: 防御性日志 */ console.error('[FAI] 模拟扫码失败:', err) } } },
+      { id: 'moni', label: '模拟扫码', onClick: () => { try { const mock = this.buildMockScanState(); this.replaceState(mock as any, { isDraft: true }) } catch (err) { /* istanbul ignore next: 防御性日志 */ console.error('[FAI] 模拟扫码失败:', err) } } },
       { id: 'scan-input', label: '输入条码/单据ID', onClick: async () => { await this.openInputAndScan() } },
       { id: 'scan-open', label: '相机扫码打开首件检验', onClick: async () => { try { await scanQRCode() } catch (err) { /* istanbul ignore next: 防御性日志 */ console.error('[FAI] 触发相机扫码失败:', err) } } },
     ]
@@ -730,11 +732,16 @@ export class FaiViewModel extends QualityDocumentBase<FirstInspectionDocument, F
    *
    * 替换部分状态（谨慎使用）。
    *
+   * @param options 生命周期标记；扫码生成且尚未保存的数据应标记为不落库草稿。
    */
-  public replaceState(payload: Partial<{ bill: FirstInspectionDocument; details: FaiDetailView[]; rawDocument: any }>): void {
+  public replaceState(
+    payload: Partial<{ bill: FirstInspectionDocument; details: FaiDetailView[]; rawDocument: any }>,
+    options: { readonly isDraft?: boolean } = {},
+  ): void {
     if ('bill' in payload && payload.bill) this.bill = payload.bill
     if ('details' in payload && payload.details) this.details = this.ensureDetailsLocalKeys(payload.details)
-    this.markDocumentDataLoaded()
+    if (options.isDraft) this.markDocumentDraftLoaded()
+    else this.markDocumentDataLoaded()
     this.status = parseDocumentStatus((this.bill as any)?.Status ?? (this.bill as any)?.status)
     this.updateMaterialCodeFromBill()
     this.deriveProcessName()
@@ -882,10 +889,7 @@ export class FaiViewModel extends QualityDocumentBase<FirstInspectionDocument, F
       setLastFaiBillIdToStorage(billId)
       return
     }
-    // 审批成功后回拉单据：用于获取后端在审批后生成/更新的字段（例如单据编号 Code）
-    if (billId > 0) {
-      await this.refresh(billId, { silent: true } as any)
-    }
+    // DocumentBase 已在调用本回调前回拉审批后的完整快照，此处只保留 NCR 引导相关状态处理。
     this.emit()
   }
 
@@ -1368,7 +1372,7 @@ export class FaiViewModel extends QualityDocumentBase<FirstInspectionDocument, F
       bill: (normDoc as FirstInspectionDocument) ?? this.createEmptyFirstInspectionDocument(),
       details: (normDetails ?? []) as any,
       rawDocument: doc as any,
-    })
+    }, { isDraft: draftId <= 0 })
     this.updateProcessNameFromBill()
     if (!this.processName) this.deriveProcessName()
 

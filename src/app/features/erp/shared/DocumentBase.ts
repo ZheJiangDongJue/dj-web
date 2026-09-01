@@ -412,6 +412,7 @@ export interface DocumentBaseLike<TDocument, TDetail> {
   readonly shouldConfirmLeave: boolean
   markDocumentDirty(): void
   markDocumentDataLoaded(): void
+  markDocumentDraftLoaded(): void
   getStatusLocks(
     status: number,
   ): { isLocked: boolean; approveDisabled: boolean; unapproveDisabled: boolean; editingDisabled: boolean }
@@ -454,50 +455,65 @@ export class DocumentBase<TDocument, TDetail> implements DocumentBaseLike<TDocum
   /**
    * 当前页面是否已经装载单据或草稿数据。
    *
-   * @returns 新建空白态为 false；打开已有单据、加载不落库草稿或保存成功后为 true。
+   * @returns 新建空白态为 false；打开已有单据或加载不落库草稿后为 true。
    */
   public get hasDocumentData(): boolean {
-    return this.documentPresence === 'loaded'
+    return this.documentPresence !== 'new'
   }
 
   /**
    * 当前页面是否应在发生页面级离开时询问用户。
    *
    * @returns
-   * - 已打开单据或已加载不落库草稿：返回 true；
+   * - 未落库草稿：返回 true；
+   * - 已保存单据：没有未保存修改时返回 false，不区分已审批或未审批业务状态；
    * - 新建空白态：返回 false；
-   * - 新建态发生过任意单据内容修改：返回 true。
+   * - 当前页面发生过未保存的单据内容修改：返回 true。
    *
    * @remarks
-   * 该判断只服务于离开页面保护，不改变保存、审批、删除等业务流程的状态判定。
+   * 离开确认保护的是“可能丢失的草稿或本地修改”，不能仅因为页面加载过单据就拦截。
    */
   public get shouldConfirmLeave(): boolean {
-    return this.documentPresence === 'loaded' || this.documentDirty
+    return this.documentPresence === 'draft' || this.documentDirty
   }
 
   /**
-   * 标记当前新建态已经发生了用户修改。
+   * 标记当前单据已经发生了未保存修改。
    *
    * @remarks
-   * - 由具体单据 ViewModel 在表头、明细或附件等用户编辑入口写入；
+   * - 由具体单据 ViewModel 在表头、明细或附件等用户编辑入口写入，适用于新建态和已加载单据；
    * - 初始化默认值、服务端加载、草稿加载和重置不会调用该方法；
-   * - 已装载单据即使不设置该标记，也会继续按已有单据规则触发离开询问。
+   * - 保存成功、重新加载或审批后刷新会通过 markDocumentDataLoaded 清除此标记。
    */
   public markDocumentDirty(): void {
-    if (this.documentPresence === 'loaded' || this.documentDirty) return
+    if (this.documentDirty) return
     this.documentDirty = true
     this.emit()
   }
 
   /**
-   * 将当前页面标记为已经装载单据/草稿数据。
+   * 将当前页面标记为已经装载并保存到服务端的单据。
    *
    * @remarks
-   * 供质量域 ViewModel 在“不落库草稿”写入本地状态后调用；普通按 ID 打开/刷新由基类自动标记。
+   * 普通按 ID 打开、刷新、保存成功和审批/反审批后的刷新都使用此方法；该操作会清除未保存修改标记。
    */
   public markDocumentDataLoaded(): void {
-    const changed = this.documentPresence !== 'loaded' || this.documentDirty
-    this.documentPresence = 'loaded'
+    const changed = this.documentPresence !== 'saved' || this.documentDirty
+    this.documentPresence = 'saved'
+    this.documentDirty = false
+    if (changed) this.emit()
+  }
+
+  /**
+   * 将当前页面标记为已经加载但尚未落库的草稿。
+   *
+   * @remarks
+   * 供扫码生成、日计划生成等“不落库草稿”流程使用。即使用户尚未再次编辑，离开页面也必须提示，
+   * 因为该草稿只存在于当前页面内；保存成功后由 markDocumentDataLoaded 转为已保存单据。
+   */
+  public markDocumentDraftLoaded(): void {
+    const changed = this.documentPresence !== 'draft' || this.documentDirty
+    this.documentPresence = 'draft'
     this.documentDirty = false
     if (changed) this.emit()
   }
@@ -509,20 +525,20 @@ export class DocumentBase<TDocument, TDetail> implements DocumentBaseLike<TDocum
   private activeScanHandler: ScanResultHandler | null = null
   private loadSeq = 0
   /**
-   * 当前单据生命周期：新建空白态，或已经装载了单据/草稿数据的状态。
+   * 当前单据生命周期：新建空白态、未落库草稿或已保存单据。
    *
    * @remarks
    * - 不能只依赖主键判断：扫码生成的质量单据草稿不落库，主键仍为空但页面已经有业务数据；
-   * - 该状态用于离开页面保护，不改变保存、审批等既有业务判断。
+   * - draft 与 saved 的区分用于离开页面保护，不改变保存、审批等既有业务判断。
    */
-  private documentPresence: 'new' | 'loaded' = 'new'
+  private documentPresence: 'new' | 'draft' | 'saved' = 'new'
 
   /**
-   * 新建态是否已经被用户修改。
+   * 当前单据是否已经被用户修改但尚未完成保存。
    *
    * @remarks
-   * 该字段与 documentPresence 分离：新建态只要产生用户编辑就需要拦截离开，
-   * 但仍然保持“新建态没有已装载单据数据”的业务生命周期语义。
+   * 该字段与 documentPresence 分离：已加载单据、未落库草稿和新建单据都可能产生本地修改，
+   * 保存成功或重新加载后统一清零。
    */
   private documentDirty = false
 

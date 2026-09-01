@@ -25,7 +25,7 @@ let bypassNextConfirmation = false
 /**
  * 注册当前单据的离开守卫。
  *
- * @param guard 返回 true 表示当前页面存在已装载单据/草稿，或新建态已有用户修改。
+ * @param guard 返回 true 表示当前页面存在未审批草稿或未保存的用户修改。
  * @returns 取消本次注册的函数；不会误清理后续页面注册的守卫。
  */
 export function registerDocumentLeaveGuard(guard: DocumentLeaveGuard | null): () => void {
@@ -115,6 +115,21 @@ export function consumeAllowedDocumentLeaveConfirmation(): boolean {
 /** 清理尚未被消费的导航放行标记。 */
 export function clearAllowedDocumentLeaveConfirmation(): void {
   bypassNextConfirmation = false
+}
+
+/**
+ * 标记下一次完整的页面离开导航已经完成确认。
+ *
+ * @param isHistoryBack 是否会由 history.back()/history.go() 触发 popstate；
+ *   历史导航还需要额外跳过页面级 popstate 守卫。
+ * @remarks
+ * Android 返回键、页面返回按钮和浏览器历史返回最终可能落到不同的浏览器事件：
+ * 同文档路由会触发 popstate，跨文档返回则可能直接触发 beforeunload。因此两类
+ * 一次性放行标记必须成对设置，避免用户已经在网页 Dialog 中确认后再次看到原生提示。
+ */
+export function allowNextDocumentLeaveNavigation(isHistoryBack = false): void {
+  allowNextDocumentLeaveConfirmation()
+  if (isHistoryBack) allowNextDocumentLeavePopState()
 }
 
 /**

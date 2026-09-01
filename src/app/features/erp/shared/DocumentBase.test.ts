@@ -22,6 +22,8 @@ function createBaseForTest(options: {
   document?: Record<string, unknown>
   details?: unknown[]
   status?: number
+  refreshAfterApprove?: boolean
+  refreshAfterUnapprove?: boolean
   actionOptions?: Parameters<typeof createDocumentActions>[0]
   service?: Record<string, any>
 } = {}) {
@@ -42,6 +44,8 @@ function createBaseForTest(options: {
       approved: 8,
       unapproved: 16,
     },
+    refreshAfterApprove: options.refreshAfterApprove ?? false,
+    refreshAfterUnapprove: options.refreshAfterUnapprove ?? false,
     initialId: null,
   } as any)
 
@@ -215,6 +219,119 @@ describe('DocumentBase 写入前时间戳校验', () => {
     expect(callUnapprove).not.toHaveBeenCalled()
     expect(getDocument()).toEqual(latest)
     expect(toast.warning).toHaveBeenCalledWith('已更新到数据库最新单据，请确认后再反审批')
+  })
+
+  it('成功审批后同步最新版本，随后反审批不因自身 ApprovalTime 变化触发确认', async () => {
+    const confirmRefresh = vi.fn(() => true)
+    unregisterConfirm = registerDocumentRefreshConfirmationHandler(confirmRefresh)
+    const callSave = vi.fn(async () => ({ id: 21 }))
+    const callApprove = vi.fn(async () => ({ success: true }))
+    const callUnapprove = vi.fn(async () => ({ success: true }))
+    const draft = {
+      id: 21,
+      UpdateTime: '2026-01-01T08:00:00Z',
+      ApprovalTime: null,
+    }
+    const approved = {
+      id: 21,
+      Status: 1,
+      UpdateTime: '2026-01-01T09:00:00Z',
+      ApprovalTime: '2026-01-01T09:00:00Z',
+    }
+    const unapproved = {
+      id: 21,
+      Status: 0,
+      UpdateTime: '2026-01-01T10:00:00Z',
+      ApprovalTime: null,
+    }
+    const fetchById = vi
+      .fn()
+      .mockResolvedValueOnce({ document: draft, details: [] })
+      .mockResolvedValueOnce({ document: draft, details: [] })
+      .mockResolvedValueOnce({ document: approved, details: [{ id: 1 }] })
+      .mockResolvedValueOnce({ document: approved, details: [{ id: 1 }] })
+      .mockResolvedValueOnce({ document: unapproved, details: [{ id: 1 }] })
+    const { base, actions, getDocument } = createBaseForTest({
+      document: draft,
+      actionOptions: { callSave, callApprove, callUnapprove },
+      refreshAfterApprove: true,
+      refreshAfterUnapprove: true,
+      service: {
+        fetchById,
+        extractId: (result: any) => result?.id,
+      },
+    })
+    actions.setId(21)
+
+    await expect(base.handleApprove()).resolves.toBe(true)
+
+    expect(getDocument()).toEqual(approved)
+    expect(base.shouldConfirmLeave).toBe(false)
+    await expect(base.handleUnapprove()).resolves.toBe(true)
+
+    expect(callSave).toHaveBeenCalledOnce()
+    expect(callApprove).toHaveBeenCalledWith(21)
+    expect(callUnapprove).toHaveBeenCalledWith(21)
+    expect(fetchById).toHaveBeenCalledTimes(5)
+    expect(confirmRefresh).not.toHaveBeenCalled()
+    expect(getDocument()).toEqual(unapproved)
+    expect(base.shouldConfirmLeave).toBe(false)
+  })
+
+  it('成功反审批后同步最新版本，随后审批不因自身 ApprovalTime 变化触发确认', async () => {
+    const confirmRefresh = vi.fn(() => true)
+    unregisterConfirm = registerDocumentRefreshConfirmationHandler(confirmRefresh)
+    const callSave = vi.fn(async () => ({ id: 22 }))
+    const callApprove = vi.fn(async () => ({ success: true }))
+    const callUnapprove = vi.fn(async () => ({ success: true }))
+    const approved = {
+      id: 22,
+      Status: 1,
+      UpdateTime: '2026-01-01T09:00:00Z',
+      ApprovalTime: '2026-01-01T09:00:00Z',
+    }
+    const unapproved = {
+      id: 22,
+      Status: 0,
+      UpdateTime: '2026-01-01T10:00:00Z',
+      ApprovalTime: null,
+    }
+    const approvedAgain = {
+      id: 22,
+      Status: 1,
+      UpdateTime: '2026-01-01T11:00:00Z',
+      ApprovalTime: '2026-01-01T11:00:00Z',
+    }
+    const fetchById = vi
+      .fn()
+      .mockResolvedValueOnce({ document: approved, details: [{ id: 1 }] })
+      .mockResolvedValueOnce({ document: unapproved, details: [{ id: 1 }] })
+      .mockResolvedValueOnce({ document: unapproved, details: [{ id: 1 }] })
+      .mockResolvedValueOnce({ document: unapproved, details: [{ id: 1 }] })
+      .mockResolvedValueOnce({ document: approvedAgain, details: [{ id: 1 }] })
+    const { base, actions, getDocument } = createBaseForTest({
+      document: approved,
+      actionOptions: { callSave, callApprove, callUnapprove },
+      refreshAfterApprove: true,
+      refreshAfterUnapprove: true,
+      service: {
+        fetchById,
+        extractId: (result: any) => result?.id,
+      },
+    })
+    actions.setId(22)
+
+    await expect(base.handleUnapprove()).resolves.toBe(true)
+
+    expect(getDocument()).toEqual(unapproved)
+    await expect(base.handleApprove()).resolves.toBe(true)
+
+    expect(callUnapprove).toHaveBeenCalledWith(22)
+    expect(callSave).toHaveBeenCalledOnce()
+    expect(callApprove).toHaveBeenCalledWith(22)
+    expect(fetchById).toHaveBeenCalledTimes(5)
+    expect(confirmRefresh).not.toHaveBeenCalled()
+    expect(getDocument()).toEqual(approvedAgain)
   })
 
   it('删除前发现更新时间不一致时阻断删除', async () => {

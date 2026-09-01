@@ -147,6 +147,14 @@ describe('FqcViewModelClass', () => {
     vm.required.checkEmptyAndFocus = vi.fn(() => ({ hasEmpty: false }))
     vm.status = DocumentStatus.未审批
     ;(vm.bill as any).DocumentStatus = DocumentStatus.未审批
+    ;(appService as any).fetchById = vi.fn(async () => ({
+      document: {
+        ...(vm.bill as any),
+        Status: DocumentStatus.已审批,
+        DocumentStatus: DocumentStatus.已审批,
+      },
+      details: vm.details,
+    }))
     const assignMock = vi.fn()
     ;(globalThis as any).window = { location: { origin: 'http://localhost', assign: assignMock } }
     const { toast } = await import('sonner')
@@ -169,6 +177,14 @@ describe('FqcViewModelClass', () => {
     vm.required.checkEmptyAndFocus = vi.fn(() => ({ hasEmpty: false, emptyKeys: [] }))
     ;(vm.bill as any).Code = 'FQC-DEL-001'
     ;(vm.bill as any).DocumentStatus = DocumentStatus.未审批
+    ;(appService as any).fetchById = vi.fn(async () => ({
+      document: {
+        ...(vm.bill as any),
+        Status: DocumentStatus.已审批,
+        DocumentStatus: DocumentStatus.已审批,
+      },
+      details: vm.details,
+    }))
     const keepA = createDetail()
     keepA.ProjectName = '保留A'
     const deleted = createDetail()
