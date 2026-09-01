@@ -23,16 +23,48 @@ function joinPath(parts: string[]): string {
     .join('/')
 }
 
+/**
+ * 将路径拆成不带空段的片段，供上游前缀去重使用。
+ *
+ * 浏览器端 ERP 客户端的 controllerPath 本身包含 `/api`，而同源代理的
+ * catch-all 参数也会收到这个片段；上游前缀已经存在时不能再次拼接。
+ */
+function splitPath(value: string): string[] {
+  return value
+    .split('/')
+    .map((part) => part.trim())
+    .filter(Boolean)
+}
+
+/**
+ * 在请求路径缺少上游前缀时补齐前缀；已有前缀时保持原样。
+ *
+ * 这样同时兼容 `/api/erp/FlowScanApi/...` 与 `/api/erp/api/FlowScanApi/...`
+ * 两种历史调用方式，最终都只向 ERP.WebApi 转发一个 `/api`。
+ */
+function prependPrefixOnce(pathParts: string[], prefix: string): string[] {
+  const normalizedPath = pathParts.flatMap(splitPath)
+  const normalizedPrefix = splitPath(prefix)
+  if (normalizedPrefix.length === 0) return normalizedPath
+
+  const alreadyPrefixed = normalizedPrefix.every(
+    (part, index) => normalizedPath[index]?.toLowerCase() === part.toLowerCase(),
+  )
+  return alreadyPrefixed ? normalizedPath : [...normalizedPrefix, ...normalizedPath]
+}
+
 function getUpstreamPrefix(): string {
   const v = getEnv('ERP_UPSTREAM_PREFIX')
-  return (v && v.trim()) || ''
+  // ERP.WebApi 的控制器统一挂在 /api 下；只有显式配置空字符串时才允许直连根路径。
+  // 这样未配置 ERP_UPSTREAM_PREFIX 的默认环境不会把 /api/erp/... 转发成错误的 /... 路径。
+  return v === undefined ? 'api' : v.trim()
 }
 
 function buildTargetURL(req: NextRequest, params: Params): URL | null {
   const base = getEnv('ERP_API_BASE_URL')?.replace(/\/$/, '')
   if (!base) return null
   const prefix = getUpstreamPrefix()
-  const seg = joinPath([prefix, ...(params.path ?? [])])
+  const seg = joinPath(prependPrefixOnce(params.path ?? [], prefix))
   const search = req.nextUrl.search
   return new URL(`${base}/${seg}${search}`)
 }
