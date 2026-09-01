@@ -417,6 +417,45 @@ describe('FinalInspectionApplicationService', () => {
     expect(rework.type).toBe('DRAFT_LOADED')
   })
 
+  it('executeScan: 日计划同时存在原始与返工流程卡时使用匹配的返工明细生成末件草稿', async () => {
+    const repo = createRepo()
+    const service = new FinalInspectionApplicationService(repo as any)
+
+    flowScanCheckMock.mockResolvedValueOnce({
+      success: true,
+      data: {
+        CurrentFlowDetails: [
+          { TableName: 'ProcessAssemblyFlowDetail', id: 44244 },
+          { TableName: 'ProcessAssemblyFlowDetail', id: 44246 },
+        ],
+        Items: [
+          {
+            Matched: false,
+            FlowDetail: { TableName: 'ProcessAssemblyFlowDetail', id: 44244 },
+          },
+          {
+            Matched: true,
+            FlowDetail: { TableName: 'ProcessAssemblyFlowDetail', id: 44246 },
+          },
+        ],
+      },
+    })
+    createByAssemblyFlowDetailMock.mockResolvedValueOnce({
+      success: true,
+      data: { Document: { id: 0 }, Details: [] },
+    })
+
+    const result = await service.executeScan('RJH-202608310011')
+
+    expect(createByAssemblyFlowDetailMock).toHaveBeenCalledWith(
+      expect.objectContaining({ detailid: 44246 }),
+    )
+    expect(createByAssemblyFlowDetailMock).not.toHaveBeenCalledWith(
+      expect.objectContaining({ detailid: 44244 }),
+    )
+    expect(result.type).toBe('DRAFT_LOADED')
+  })
+
   it('executeScan: 挤出计划条码（JCJH-*）走 FlowScanApi 且 sourceType=ExtrusionPlanDetail', async () => {
     const repo = createRepo()
     const service = new FinalInspectionApplicationService(repo as any)

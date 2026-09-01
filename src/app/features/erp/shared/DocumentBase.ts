@@ -20,6 +20,11 @@ type MutationTimestampSnapshot = {
   readonly approvalTime: string
   readonly hasAnyField: boolean
 }
+type MutationStatusSnapshot = {
+  readonly status: string
+  readonly hasAnyField: boolean
+}
+type RejectedMutationRecoveryResult = 'applied' | 'kept-current' | 'unavailable'
 type ScanListenerGlobals = {
   registry: Record<string, ScanDisposer | undefined>
   seq: number
@@ -172,6 +177,30 @@ function pickCaseInsensitiveField(
 
 /**
  *
+ * 按字段优先级提取单据状态。
+ * @remarks
+ * - 页面标准化后可能同时存在 `Status`、`status`、`DocumentStatus`；
+ * - 优先使用通用状态字段，避免对象属性插入顺序影响并发校验结果。
+ * @param record 单据对象。
+ * @param names 状态字段优先级。
+ * @returns 是否找到字段及其原始值。
+ *
+ */
+function pickPreferredCaseInsensitiveField(
+  record: Record<string, unknown>,
+  names: readonly string[],
+): { readonly found: boolean; readonly value: unknown } {
+  const keys = Object.keys(record)
+  for (const name of names) {
+    const expected = name.toLowerCase()
+    const key = keys.find((candidate) => candidate.toLowerCase() === expected)
+    if (key !== undefined) return { found: true, value: record[key] }
+  }
+  return { found: false, value: undefined }
+}
+
+/**
+ *
  * 将数据库时间字段归一为可比较值。
  * @remarks
  * - 兼容 null/空串、Date、ISO 字符串、SQL/接口常见的 `/Date(ms)/`；
@@ -243,6 +272,53 @@ export function areDocumentMutationTimestampsEqual(
 
 /**
  *
+ * 判断本地单据与数据库单据的业务状态是否一致。
+ * @remarks
+ * - 仅在单据对象确实带有状态字段时比较；两个对象都没有状态字段时保持兼容并视为一致；
+ * - 后端历史接口可能用 `0` 表示未审批，而页面枚举使用 `statusFlagConfig.unapproved`，两者按同一状态处理；
+ * - 状态校验与时间戳校验互补，避免远端只切换审批状态但时间字段没有可检测变化时误调用写接口。
+ * @param localDocument 当前页面中的单据。
+ * @param latestDocument 后端按 ID 重新获取的最新单据。
+ * @param unapprovedStatus 页面使用的未审批状态值，用于兼容后端 `0`。
+ *
+ */
+export function areDocumentMutationStatusesEqual(
+  localDocument: unknown,
+  latestDocument: unknown,
+  unapprovedStatus?: number,
+): boolean {
+  const getSnapshot = (document: unknown): MutationStatusSnapshot => {
+    const record = (document ?? {}) as Record<string, unknown>
+    const field = pickPreferredCaseInsensitiveField(record, ['Status', 'status', 'DocumentStatus', 'documentStatus'])
+    if (!field.found) return { status: '', hasAnyField: false }
+
+    const raw = field.value
+    if (raw == null || String(raw).trim() === '') return { status: '', hasAnyField: true }
+
+    const text = String(raw).trim()
+    if (/^-?\d+$/.test(text)) {
+      const numeric = Number(text)
+      if (Number.isFinite(numeric)) {
+        const normalized = numeric === 0 && unapprovedStatus != null ? unapprovedStatus : numeric
+        return { status: `number:${normalized}`, hasAnyField: true }
+      }
+    }
+
+    if (text === '未审批' && unapprovedStatus != null) {
+      return { status: `number:${unapprovedStatus}`, hasAnyField: true }
+    }
+    return { status: `text:${text.replace(/\s+/g, ' ')}`, hasAnyField: true }
+  }
+
+  const local = getSnapshot(localDocument)
+  const latest = getSnapshot(latestDocument)
+  if (!local.hasAnyField && !latest.hasAnyField) return true
+  if (local.hasAnyField !== latest.hasAnyField) return false
+  return local.status === latest.status
+}
+
+/**
+ *
  * 判断后端保存失败是否来自“单据状态已在数据库变化”。
  * @remarks
  * - 这类错误通常表示前端状态没有同步数据库最新审批状态；
@@ -259,6 +335,9 @@ export function shouldReopenDocumentAfterRejectedMutation(message: string | null
     text.includes('当前单据已审批,无法修改') ||
     text.includes('当前单据已审批，无法修改') ||
     text.includes('当前单据不是未审批状态') ||
+    text.includes('状态不允许反审批') ||
+    text.includes('单据已被审批,无法重复审批') ||
+    text.includes('单据已被审批，无法重复审批') ||
     text.includes('状态没有同步')
   )
 }
@@ -1024,7 +1103,7 @@ export class DocumentBase<TDocument, TDetail> implements DocumentBaseLike<TDocum
   private async ensureDocumentFreshBeforeMutation(actionName: string): Promise<boolean> {
     if (!this.bridge) return false
 
-    const { service } = this.options
+    const { service, statusFlagConfig } = this.options
     const currentId = this.getCurrentBillId()
     if (!currentId) return true
     if (!service.fetchById) return true
@@ -1048,7 +1127,9 @@ export class DocumentBase<TDocument, TDetail> implements DocumentBaseLike<TDocum
       }
 
       const currentDoc = this.bridge.getDocument()
-      if (areDocumentMutationTimestampsEqual(currentDoc, latestDoc)) {
+      const timestampsEqual = areDocumentMutationTimestampsEqual(currentDoc, latestDoc)
+      const statusesEqual = areDocumentMutationStatusesEqual(currentDoc, latestDoc, statusFlagConfig.unapproved)
+      if (timestampsEqual && statusesEqual) {
         return true
       }
 
@@ -1091,24 +1172,25 @@ export class DocumentBase<TDocument, TDetail> implements DocumentBaseLike<TDocum
    * - 这是写入前时间戳校验之外的兜底：即使前置校验未命中，后端最终拒绝写入时也要让页面回到最新状态；
    * - 仅由明确的状态冲突错误触发，避免普通保存失败覆盖本地输入。
    * @param actionName 当前动作名。
+   * @returns `applied` 表示已应用最新快照，`kept-current` 表示用户保留当前页面，`unavailable` 表示无法完成恢复。
    *
    */
-  private async reopenLatestDocumentAfterRejectedMutation(actionName: string): Promise<boolean> {
-    if (!this.bridge) return false
+  private async reopenLatestDocumentAfterRejectedMutation(actionName: string): Promise<RejectedMutationRecoveryResult> {
+    if (!this.bridge) return 'unavailable'
 
     const { service } = this.options
     const currentId = this.getCurrentBillId()
-    if (!currentId || !service.fetchById) return false
+    if (!currentId || !service.fetchById) return 'unavailable'
 
     const seq = this.bumpLoadSeq()
     const ctx: DocumentLoadContext = { seq, isActive: () => this.isLoadSeqActive(seq) }
 
     try {
       const res = await service.fetchById(currentId)
-      if (!this.isLoadSeqActive(seq)) return false
+      if (!this.isLoadSeqActive(seq)) return 'unavailable'
 
       const latestDoc = (res?.document ?? null) as TDocument | null
-      if (!latestDoc) return false
+      if (!latestDoc) return 'unavailable'
 
       const latestDetails = Array.isArray(res?.details) ? (res.details as TDetail[]) : []
       const shouldApplyLatest = await confirmDocumentRefreshBeforeApply({
@@ -1121,7 +1203,7 @@ export class DocumentBase<TDocument, TDetail> implements DocumentBaseLike<TDocum
         } catch {
           // ignore
         }
-        return false
+        return 'kept-current'
       }
 
       await this.applyLoadedSnapshot(currentId, latestDoc, latestDetails, ctx)
@@ -1130,11 +1212,11 @@ export class DocumentBase<TDocument, TDetail> implements DocumentBaseLike<TDocum
       } catch {
         // ignore
       }
-      return true
+      return 'applied'
     } catch (error) {
-      if (!this.isLoadSeqActive(seq)) return false
+      if (!this.isLoadSeqActive(seq)) return 'unavailable'
       console.error(`[DocumentBase] ${actionName}失败后重新打开最新单据失败:`, error)
-      return false
+      return 'unavailable'
     }
   }
 
@@ -1519,6 +1601,11 @@ export class DocumentBase<TDocument, TDetail> implements DocumentBaseLike<TDocum
 
     const result = await docActions.approve(id)
     if (!result.success) {
+      const message = extractUserFacingErrorMessage(result)
+      if (shouldReopenDocumentAfterRejectedMutation(message)) {
+        const recovery = await this.reopenLatestDocumentAfterRejectedMutation('审批')
+        if (recovery !== 'unavailable') return false
+      }
       try {
         toast.error(formatActionErrorMessage('审批', result, '审批失败'))
       } catch {
@@ -1576,6 +1663,11 @@ export class DocumentBase<TDocument, TDetail> implements DocumentBaseLike<TDocum
 
     const result = await docActions.unapprove(id)
     if (!result.success) {
+      const message = extractUserFacingErrorMessage(result)
+      if (shouldReopenDocumentAfterRejectedMutation(message)) {
+        const recovery = await this.reopenLatestDocumentAfterRejectedMutation('反审批')
+        if (recovery !== 'unavailable') return false
+      }
       try {
         toast.error(formatActionErrorMessage('反审批', result, '反审批失败'))
       } catch {

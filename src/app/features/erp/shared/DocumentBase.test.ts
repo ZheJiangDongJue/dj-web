@@ -221,6 +221,90 @@ describe('DocumentBase 写入前时间戳校验', () => {
     expect(toast.warning).toHaveBeenCalledWith('已更新到数据库最新单据，请确认后再反审批')
   })
 
+  it('页面仍为已审批但服务端已反审批时，即使时间戳相同也确认更新并阻断反审批', async () => {
+    // 模拟其他设备只切换审批状态，接口返回的更新时间和审批时间没有可检测变化。
+    const confirmRefresh = vi.fn(() => true)
+    unregisterConfirm = registerDocumentRefreshConfirmationHandler(confirmRefresh)
+    const callUnapprove = vi.fn(async () => ({ success: true }))
+    const latest = {
+      id: 12,
+      Status: 0,
+      UpdateTime: '2026-01-01T08:00:00Z',
+      ApprovalTime: '2026-01-01T09:00:00Z',
+    }
+    const fetchById = vi.fn(async () => ({ document: latest, details: [{ id: 3 }] }))
+    const { base, actions, getDocument, getDetails } = createBaseForTest({
+      document: {
+        id: 12,
+        Status: 1,
+        UpdateTime: '2026-01-01T08:00:00Z',
+        ApprovalTime: '2026-01-01T09:00:00Z',
+      },
+      status: 8,
+      actionOptions: { callUnapprove },
+      service: {
+        fetchById,
+        extractId: () => 12,
+      },
+    })
+    actions.setId(12)
+
+    await expect(base.handleUnapprove()).resolves.toBe(false)
+
+    expect(fetchById).toHaveBeenCalledWith(12)
+    expect(confirmRefresh).toHaveBeenCalledWith({ actionName: '反审批', reason: 'precheck' })
+    expect(callUnapprove).not.toHaveBeenCalled()
+    expect(getDocument()).toEqual(latest)
+    expect(getDetails()).toEqual([{ id: 3 }])
+    expect(toast.warning).toHaveBeenCalledWith('已更新到数据库最新单据，请确认后再反审批')
+  })
+
+  it('反审批接口返回状态冲突时确认更新最新未审批单据，不仅提示原始错误', async () => {
+    // 模拟前置查询仍返回旧的已审批快照，反审批请求期间才发现其他设备已经完成反审批。
+    const confirmRefresh = vi.fn(() => true)
+    unregisterConfirm = registerDocumentRefreshConfirmationHandler(confirmRefresh)
+    const callUnapprove = vi.fn(async () => ({
+      success: false,
+      message: '当前[xxx]的单据状态不允许反审批!',
+    }))
+    const current = {
+      id: 13,
+      Status: 1,
+      UpdateTime: '2026-01-01T08:00:00Z',
+      ApprovalTime: '2026-01-01T09:00:00Z',
+    }
+    const latest = {
+      id: 13,
+      Status: 0,
+      UpdateTime: '2026-01-01T08:00:00Z',
+      ApprovalTime: '2026-01-01T09:00:00Z',
+    }
+    const fetchById = vi
+      .fn()
+      .mockResolvedValueOnce({ document: current, details: [] })
+      .mockResolvedValueOnce({ document: latest, details: [{ id: 4 }] })
+    const { base, actions, getDocument, getDetails } = createBaseForTest({
+      document: current,
+      status: 8,
+      actionOptions: { callUnapprove },
+      service: {
+        fetchById,
+        extractId: () => 13,
+      },
+    })
+    actions.setId(13)
+
+    await expect(base.handleUnapprove()).resolves.toBe(false)
+
+    expect(callUnapprove).toHaveBeenCalledOnce()
+    expect(fetchById).toHaveBeenCalledTimes(2)
+    expect(confirmRefresh).toHaveBeenCalledWith({ actionName: '反审批', reason: 'rejected' })
+    expect(getDocument()).toEqual(latest)
+    expect(getDetails()).toEqual([{ id: 4 }])
+    expect(toast.warning).toHaveBeenCalledWith('反审批未执行，已更新到数据库最新单据，请确认后重试')
+    expect(toast.error).not.toHaveBeenCalled()
+  })
+
   it('成功审批后同步最新版本，随后反审批不因自身 ApprovalTime 变化触发确认', async () => {
     const confirmRefresh = vi.fn(() => true)
     unregisterConfirm = registerDocumentRefreshConfirmationHandler(confirmRefresh)

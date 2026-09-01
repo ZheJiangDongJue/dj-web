@@ -185,6 +185,7 @@ describe('FaiViewModelClass', () => {
 
     const vm = new FaiViewModel(appService)
     ;(vm.bill as any).Code = 'FAI-001'
+    ;(vm.bill as any).Status = DocumentStatus.已审批
     ;(vm.bill as any).DocumentStatus = DocumentStatus.已审批
     await vm.handleSave()
     vm.status = DocumentStatus.已审批
